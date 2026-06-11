@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.pdf-report {
+  width: 100%;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.pdf-report * {
+  box-sizing: border-box;
+}
+
+.pdf-phase-section {
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.pdf-avoid-break {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.pdf-force-break-before {
+  break-before: page;
+  page-break-before: always;
+}
+
+.avoid-page-break,
+.break-inside-avoid {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf node_modules package-lock.json)",
+      "Bash(npm install *)",
+      "Bash(timeout 15 npm run dev)",
+      "Bash(npm run *)",
+      "Read(//tmp/**)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(gh auth *)",
+      "Bash(git --version)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}
