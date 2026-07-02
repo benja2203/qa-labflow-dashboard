@@ -1,4 +1,5 @@
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
+import { getDirectionLabel, getRelayLabel, getRelaySourceLabel } from '../constants/accessConfig.js';
 
 const ACCESS_DEVICES = ['qr', 'stickertag', 'lpr', 'facial'];
 
@@ -55,6 +56,16 @@ function getPeripheralInstance(peripheralConfig, index) {
   return {
     id: String(existingInstance?.id ?? index),
     label: existingInstance?.label || '',
+    doorId: existingInstance?.doorId || '',
+    direction: existingInstance?.direction || '',
+    port: existingInstance?.port || '',
+    portNote: existingInstance?.portNote || '',
+    ip: existingInstance?.ip || '',
+    relaySource: existingInstance?.relaySource || 'controller',
+    relay: existingInstance?.relay || '',
+    relayNote: existingInstance?.relayNote || '',
+    relayPin: existingInstance?.relayPin || '',
+    actionSeconds: existingInstance?.actionSeconds || '',
   };
 }
 
@@ -64,6 +75,57 @@ function getPeripheralDisplayName(peripheralCatalog, peripheralConfig, index, qt
   const defaultName = `${peripheralCatalog.name}${qty > 1 ? ` #${index + 1}` : ''}`;
 
   return customLabel ? `${peripheralCatalog.name} - ${customLabel}` : defaultName;
+}
+
+function getDoorInfo(node, instance) {
+  if (!instance.doorId) return null;
+
+  const door = (node.doors || []).find(candidate => candidate.id === instance.doorId);
+  if (!door) return null;
+
+  return {
+    name: door.name || 'Puerta sin nombre',
+    zone: door.zone || '',
+    type: door.type || '',
+    direction: instance.direction,
+    directionLabel: getDirectionLabel(instance.direction),
+  };
+}
+
+function getRelayInfo(instance) {
+  const isDeviceRelay = instance.relaySource === 'device';
+  const hasData = isDeviceRelay || instance.relay || instance.actionSeconds;
+  if (!hasData) return null;
+
+  const relayLabel = isDeviceRelay
+    ? 'Relé integrado del dispositivo'
+    : instance.relay === 'OTRO'
+      ? (instance.relayNote || 'Relé externo')
+      : instance.relay
+        ? getRelayLabel(instance.relay)
+        : '';
+
+  return {
+    source: instance.relaySource,
+    sourceLabel: getRelaySourceLabel(instance.relaySource),
+    relay: instance.relay,
+    relayLabel,
+    relayPin: instance.relayPin,
+    actionSeconds: instance.actionSeconds,
+  };
+}
+
+function applyDoorContextToDescription(description, doorInfo, relayInfo) {
+  if (!description.includes('relé correspondiente')) return description;
+  if (!doorInfo && !relayInfo) return description;
+
+  const parts = [];
+  if (doorInfo) parts.push(`Puerta: ${doorInfo.name}`);
+  if (relayInfo?.relayLabel) parts.push(`Relé: ${relayInfo.relayLabel}`);
+  if (relayInfo?.actionSeconds) parts.push(`${relayInfo.actionSeconds}s`);
+
+  if (parts.length === 0) return description;
+  return `${description} (${parts.join(', ')})`;
 }
 
 function getEnabledModuleIds(selectedCommunity) {
@@ -122,14 +184,20 @@ export function buildChecklistByPhases(selectedCommunity) {
           index,
           qty
         );
+        const doorInfo = getDoorInfo(node, instance);
+        const relayInfo = getRelayInfo(instance);
 
         phases[peripheralCatalog.phase].devices.push({
           id: `community-${selectedCommunity.id}-${baseId}`,
           deviceName: `${deviceDisplayName} [Conectado a: ${node.label}]`,
           icon: peripheralCatalog.icon,
+          doorInfo,
+          relayInfo,
+          port: instance.port,
+          ip: instance.ip,
           tasks: dynamicTests.map((description, testIndex) => ({
             id: createTaskId(selectedCommunity.id, baseId, testIndex),
-            description,
+            description: applyDoorContextToDescription(description, doorInfo, relayInfo),
           })),
         });
       }

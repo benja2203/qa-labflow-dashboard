@@ -1,7 +1,9 @@
-import React from 'react';
-import { Building, CheckCircle2, Download, FileText, RotateCcw, Settings2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Building, CheckCircle2, Download, FileText, RotateCcw, Settings2, Upload, Wrench } from 'lucide-react';
 import { getFinalStatusClasses } from '../utils/report.js';
 import PhaseSection from './PhaseSection.jsx';
+import ApprovalPanel from './ApprovalPanel.jsx';
+import TechnicalSheetModal from './TechnicalSheetModal.jsx';
 
 function SummaryPill({ label, value, className }) {
   return (
@@ -28,7 +30,12 @@ export default function Dashboard({
   onResetChecklist,
   onExportJson,
   onEditCommunity,
+  onImportJson,
+  importStripResults,
+  onToggleImportStripResults,
 }) {
+  const [showTechnicalSheet, setShowTechnicalSheet] = useState(false);
+
   return (
     <div>
       <section className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -99,12 +106,19 @@ export default function Dashboard({
           <SummaryPill label="Pending" value={summary.pending} className="border-blue-200 bg-blue-50 text-blue-700" />
         </div>
 
-        <div className="mt-5 flex flex-col gap-2 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <ApprovalPanel
+          checklistByPhases={checklistByPhases}
+          taskResults={taskResults}
+          summary={summary}
+          finalLabStatus={finalLabStatus}
+        />
+
+        <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs font-medium text-slate-500">
             Tip: usa Fail/Blocked solo con observación técnica para que el reporte quede defendible.
           </p>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={onEditCommunity}
@@ -115,6 +129,14 @@ export default function Dashboard({
             </button>
             <button
               type="button"
+              onClick={() => setShowTechnicalSheet(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+            >
+              <Wrench className="h-4 w-4" />
+              Ficha Técnica
+            </button>
+            <button
+              type="button"
               onClick={onExportJson}
               disabled={summary.total === 0}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -122,6 +144,25 @@ export default function Dashboard({
               <Download className="h-4 w-4" />
               Exportar JSON
             </button>
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <button
+                type="button"
+                onClick={onImportJson}
+                className="inline-flex items-center gap-2 text-xs font-black text-slate-600 hover:text-blue-600"
+              >
+                <Upload className="h-4 w-4" />
+                Importar JSON
+              </button>
+              <label className="flex items-center gap-1.5 border-l border-slate-200 pl-2 text-[11px] font-semibold text-slate-500">
+                <input
+                  type="checkbox"
+                  checked={importStripResults}
+                  onChange={event => onToggleImportStripResults(event.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                Solo topología (plantilla)
+              </label>
+            </div>
             <button
               type="button"
               onClick={onResetChecklist}
@@ -183,6 +224,13 @@ export default function Dashboard({
             Ver Reporte Final
           </button>
         </section>
+      )}
+
+      {showTechnicalSheet && (
+        <TechnicalSheetModal
+          selectedCommunity={selectedCommunity}
+          onClose={() => setShowTechnicalSheet(false)}
+        />
       )}
     </div>
   );

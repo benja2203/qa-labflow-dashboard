@@ -42,11 +42,26 @@ export default function DeviceCard({
             <h4 className="text-[15px] font-bold leading-tight text-slate-800">
               {titleParts ? titleParts.name : device.deviceName}
             </h4>
-            {titleParts?.connection && (
-              <span className="mt-1 inline-block rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-600">
-                {titleParts.connection}
-              </span>
-            )}
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {titleParts?.connection && (
+                <span className="inline-block rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-600">
+                  {titleParts.connection}
+                </span>
+              )}
+              {device.doorInfo && (
+                <span className="inline-block rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-600">
+                  Puerta: {device.doorInfo.name}
+                  {device.doorInfo.directionLabel ? ` · ${device.doorInfo.directionLabel}` : ''}
+                </span>
+              )}
+              {device.relayInfo?.relayLabel && (
+                <span className="inline-block rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                  {device.relayInfo.relayLabel}
+                  {device.relayInfo.relayPin ? ` (pin ${device.relayInfo.relayPin})` : ''}
+                  {device.relayInfo.actionSeconds ? ` · ${device.relayInfo.actionSeconds}s` : ''}
+                </span>
+              )}
+            </div>
             <p className="mt-1 text-xs font-medium text-slate-500">
               {passTasks + naTasks} de {totalTasks} pruebas sin bloqueo/falla
             </p>

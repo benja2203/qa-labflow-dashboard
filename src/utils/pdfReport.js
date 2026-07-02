@@ -2,8 +2,10 @@ import { jsPDF } from 'jspdf';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
 import { TEST_STATUS } from '../constants/testStatus.js';
 import {
+  getApprovalSummaryText,
   getFullReportTasks,
   getReportIssues,
+  getTechnicalDeviceReport,
   hasChecklistFailuresWithoutComment,
 } from './report.js';
 
@@ -321,6 +323,90 @@ function createPdfWriter(doc) {
     y += 20;
   }
 
+  function addDoorCard(door) {
+    const deviceCount = door.devices.length;
+    const boxHeight = deviceCount === 0 ? 18 : 12 + deviceCount * 9;
+
+    ensurePage(boxHeight + 6);
+
+    setFillColor(doc, COLORS.white);
+    setDrawColor(doc, COLORS.slate300);
+    doc.roundedRect(PAGE.margin, y, contentWidth, boxHeight, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    setTextColor(doc, COLORS.slate900);
+    doc.text(cleanText(door.name), PAGE.margin + 3, y + 6);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    setTextColor(doc, COLORS.slate500);
+    const metaText = [door.zone, door.type].filter(Boolean).join(' . ');
+    doc.text(cleanText(metaText), PAGE.width - PAGE.margin - 3, y + 6, { align: 'right' });
+
+    let rowY = y + 13;
+
+    if (deviceCount === 0) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7.5);
+      setTextColor(doc, COLORS.slate500);
+      doc.text('Sin dispositivos conectados.', PAGE.margin + 3, rowY);
+    } else {
+      door.devices.forEach(device => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        setTextColor(doc, COLORS.slate800);
+        doc.text(cleanText(`${device.typeName} - ${device.label}${device.directionLabel ? ` (${device.directionLabel})` : ''}`), PAGE.margin + 3, rowY);
+
+        doc.setFont('helvetica', 'bold');
+        setTextColor(doc, COLORS.yellow600);
+        const relayText = `${device.relayLabel || 'Sin rele'}${device.relayPin ? ` (pin ${device.relayPin})` : ''}${device.actionSeconds ? ` - ${device.actionSeconds}s` : ''}`;
+        doc.text(cleanText(relayText), PAGE.width - PAGE.margin - 3, rowY, { align: 'right' });
+
+        rowY += 4.5;
+        doc.setFont('helvetica', 'normal');
+        setTextColor(doc, COLORS.slate500);
+        const detail = [
+          device.portLabel ? `Puerto: ${device.portLabel}` : null,
+          device.ip ? `IP: ${device.ip}` : null,
+        ].filter(Boolean).join(' . ');
+        doc.text(cleanText(detail || 'Sin puerto/IP registrado'), PAGE.margin + 3, rowY);
+
+        rowY += 4.5;
+      });
+    }
+
+    y += boxHeight + 4;
+  }
+
+  function addUnassignedDeviceRow(device) {
+    ensurePage(16);
+
+    setFillColor(doc, COLORS.yellow50);
+    setDrawColor(doc, COLORS.slate300);
+    doc.roundedRect(PAGE.margin, y, contentWidth, 13, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    setTextColor(doc, COLORS.slate800);
+    doc.text(cleanText(`${device.typeName} - ${device.label} [${device.controllerLabel}]`), PAGE.margin + 3, y + 5.5);
+
+    doc.setFont('helvetica', 'bold');
+    setTextColor(doc, COLORS.yellow600);
+    const relayText = `${device.relayLabel || 'Sin rele'}${device.actionSeconds ? ` - ${device.actionSeconds}s` : ''}`;
+    doc.text(cleanText(relayText), PAGE.width - PAGE.margin - 3, y + 5.5, { align: 'right' });
+
+    doc.setFont('helvetica', 'normal');
+    setTextColor(doc, COLORS.slate500);
+    const detail = [
+      device.portLabel ? `Puerto: ${device.portLabel}` : null,
+      device.ip ? `IP: ${device.ip}` : null,
+    ].filter(Boolean).join(' . ');
+    doc.text(cleanText(detail || 'Sin puerto/IP'), PAGE.margin + 3, y + 10.5);
+
+    y += 16;
+  }
+
   function addFooterPages() {
     const totalPages = doc.getNumberOfPages();
 
@@ -350,6 +436,8 @@ function createPdfWriter(doc) {
     addMetricRow,
     addTask,
     addCoverageRow,
+    addDoorCard,
+    addUnassignedDeviceRow,
     addFooterPages,
     ensurePage,
     setY,
@@ -442,8 +530,14 @@ export function downloadStructuredPdfReport({
   const reportModeLabel = isFullReport ? 'completo' : 'compacto';
   const filename = `QA-LabFlow-${sanitizeFileName(selectedCommunity?.name)}-${reportModeLabel}-${today}.pdf`;
 
+  const responsibleParts = [
+    selectedCommunity.technicianName ? `Configurado por: ${selectedCommunity.technicianName}` : null,
+    selectedCommunity.installerName ? `Instalado por: ${selectedCommunity.installerName}` : null,
+  ].filter(Boolean);
+  const headerHeight = responsibleParts.length > 0 ? 48 : 42;
+
   setFillColor(doc, COLORS.slate800);
-  doc.rect(0, 0, PAGE.width, 42, 'F');
+  doc.rect(0, 0, PAGE.width, headerHeight, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
   setTextColor(doc, COLORS.white);
@@ -461,7 +555,11 @@ export function downloadStructuredPdfReport({
     35
   );
 
-  writer.setY(50);
+  if (responsibleParts.length > 0) {
+    doc.text(cleanText(responsibleParts.join(' | ')), PAGE.margin, 41);
+  }
+
+  writer.setY(headerHeight + 8);
 
   if (hasInvalidFailures) {
     writer.addSectionTitle('Advertencia');
@@ -504,6 +602,9 @@ export function downloadStructuredPdfReport({
     fontStyle: 'bold',
     color: finalLabStatus === 'APTO' ? COLORS.green600 : finalLabStatus === 'NO APTO' ? COLORS.red600 : COLORS.slate700,
   });
+
+  writer.addSectionTitle('Módulo de aprobación');
+  writer.addParagraph(getApprovalSummaryText(summary, finalLabStatus), { fontStyle: 'bold' });
 
   writer.addSectionTitle('Observaciones, fallas y evidencia relevante');
   if (!issues.length) {
@@ -558,6 +659,110 @@ export function downloadStructuredPdfReport({
     );
     writer.addGap(3);
     coverageRows.forEach(row => writer.addCoverageRow(row));
+  }
+
+  writer.addSectionTitle('Ficha tecnica: puertas, reles, puertos e IP');
+  writer.addParagraph(
+    'Mapa de referencia para tecnicos de terreno: que dispositivo abre cada puerta, por cual rele del controlador y con que puerto/IP quedo configurado.',
+    { fontSize: 8.5, color: COLORS.slate500 }
+  );
+  writer.addGap(2);
+
+  const { controllers, unassignedDevices } = getTechnicalDeviceReport(selectedCommunity);
+
+  controllers.forEach(controller => {
+    writer.ensurePage(12);
+    writer.addParagraph(controller.nodeLabel, { fontStyle: 'bold', fontSize: 9.5, color: COLORS.slate900 });
+    writer.addGap(1);
+
+    if (controller.doors.length === 0) {
+      writer.addParagraph('Sin puertas registradas en este controlador.', { fontSize: 8, color: COLORS.slate500 });
+    } else {
+      controller.doors.forEach(door => writer.addDoorCard(door));
+    }
+
+    writer.addGap(2);
+  });
+
+  if (unassignedDevices.length > 0) {
+    writer.addParagraph('Dispositivos sin puerta asignada', { fontStyle: 'bold', fontSize: 9, color: COLORS.yellow600 });
+    writer.addGap(1);
+    unassignedDevices.forEach(device => writer.addUnassignedDeviceRow(device));
+  }
+
+  writer.addFooterPages();
+  doc.save(filename);
+}
+
+export function downloadTechnicalSheetPdf({ selectedCommunity }) {
+  const doc = new jsPDF({
+    unit: 'mm',
+    format: 'a4',
+    orientation: 'portrait',
+    compress: true,
+  });
+
+  const writer = createPdfWriter(doc);
+  const generatedAt = new Date();
+  const today = new Date().toISOString().slice(0, 10);
+  const filename = `QA-LabFlow-${sanitizeFileName(selectedCommunity?.name)}-ficha-tecnica-${today}.pdf`;
+  const { controllers, unassignedDevices } = getTechnicalDeviceReport(selectedCommunity);
+
+  const responsibleParts = [
+    selectedCommunity?.technicianName ? `Configurado por: ${selectedCommunity.technicianName}` : null,
+    selectedCommunity?.installerName ? `Instalado por: ${selectedCommunity.installerName}` : null,
+  ].filter(Boolean);
+  const headerHeight = responsibleParts.length > 0 ? 48 : 42;
+
+  setFillColor(doc, COLORS.slate800);
+  doc.rect(0, 0, PAGE.width, headerHeight, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  setTextColor(doc, COLORS.white);
+  doc.text('QA LabFlow - Ficha Tecnica', PAGE.margin, 17);
+
+  doc.setFontSize(12);
+  doc.text(cleanText(selectedCommunity?.name), PAGE.margin, 27);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  setTextColor(doc, COLORS.slate300);
+  doc.text(`Generado: ${generatedAt.toLocaleString('es-CL')}`, PAGE.margin, 35);
+
+  if (responsibleParts.length > 0) {
+    doc.text(cleanText(responsibleParts.join(' | ')), PAGE.margin, 41);
+  }
+
+  writer.setY(headerHeight + 8);
+
+  writer.addSectionTitle('Mapa de puertas, reles, puertos e IP');
+  writer.addParagraph(
+    'Referencia para tecnicos de terreno: que dispositivo abre cada puerta, por cual rele del controlador y con que puerto/IP quedo configurado.',
+    { fontSize: 8.5, color: COLORS.slate500 }
+  );
+  writer.addGap(2);
+
+  if (controllers.length === 0) {
+    writer.addParagraph('Esta comunidad no tiene controladores configurados.');
+  }
+
+  controllers.forEach(controller => {
+    writer.ensurePage(12);
+    writer.addParagraph(controller.nodeLabel, { fontStyle: 'bold', fontSize: 10.5, color: COLORS.slate900 });
+    writer.addGap(1);
+
+    if (controller.doors.length === 0) {
+      writer.addParagraph('Sin puertas registradas en este controlador.', { fontSize: 8.5, color: COLORS.slate500 });
+    } else {
+      controller.doors.forEach(door => writer.addDoorCard(door));
+    }
+
+    writer.addGap(3);
+  });
+
+  if (unassignedDevices.length > 0) {
+    writer.addSectionTitle('Dispositivos sin puerta asignada');
+    unassignedDevices.forEach(device => writer.addUnassignedDeviceRow(device));
   }
 
   writer.addFooterPages();

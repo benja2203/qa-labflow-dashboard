@@ -1,8 +1,9 @@
 import React from 'react';
 import { useMemo, useState } from 'react';
-import { ClipboardCheck, Plus } from 'lucide-react';
+import { ClipboardCheck, Plus, Upload } from 'lucide-react';
 import { INITIAL_COMMUNITIES } from './data/deviceCatalog.jsx';
 import { DEFAULT_TASK_RESULT } from './constants/testStatus.js';
+import { DEFAULT_INSTANCE_LINK } from './constants/accessConfig.js';
 import { useLocalStorageState } from './hooks/useLocalStorageState.js';
 import { buildChecklistByPhases } from './utils/checklist.js';
 import {
@@ -19,6 +20,7 @@ import Dashboard from './components/Dashboard.jsx';
 import ReportModal from './components/ReportModal.jsx';
 
 
+
 const LEGACY_CONTROLLER_TYPE = ['mod', 'berry'].join('');
 const LEGACY_CONTROLLER_LABEL = new RegExp(['mod', 'berry'].join(''), 'gi');
 
@@ -33,10 +35,30 @@ function normalizePeripheralConfig(peripheral) {
       const existing = existingInstances[index];
 
       return {
+        ...DEFAULT_INSTANCE_LINK,
         id: String(existing?.id ?? index),
         label: existing?.label || '',
+        doorId: existing?.doorId || '',
+        direction: existing?.direction || '',
+        port: existing?.port || '',
+        portNote: existing?.portNote || '',
+        ip: existing?.ip || '',
+        relaySource: existing?.relaySource || 'controller',
+        relay: existing?.relay || '',
+        relayNote: existing?.relayNote || '',
+        relayPin: existing?.relayPin || '',
+        actionSeconds: existing?.actionSeconds || '',
       };
     }),
+  };
+}
+
+function normalizeDoor(door) {
+  return {
+    id: String(door?.id ?? `door-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+    name: door?.name || '',
+    zone: door?.zone || '',
+    type: door?.type || 'peatonal',
   };
 }
 
@@ -45,6 +67,8 @@ function normalizeCommunity(community) {
 
   return {
     ...community,
+    technicianName: community.technicianName || '',
+    installerName: community.installerName || '',
     modules: Array.isArray(community.modules)
       ? community.modules
       : Array.isArray(community.enabledModules)
@@ -54,12 +78,13 @@ function normalizeCommunity(community) {
       ...node,
       type: node.type === LEGACY_CONTROLLER_TYPE ? 'controller' : node.type,
       label: String(node.label || '').replace(LEGACY_CONTROLLER_LABEL, 'Controlador'),
+      doors: Array.isArray(node.doors) ? node.doors.map(normalizeDoor) : [],
       peripherals: (node.peripherals || []).map(normalizePeripheralConfig),
     })),
   };
 }
 
-function EmptyDashboard({ onCreateCommunity }) {
+function EmptyDashboard({ onCreateCommunity, onImportJson }) {
   return (
     <section className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
       <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
@@ -71,16 +96,49 @@ function EmptyDashboard({ onCreateCommunity }) {
       <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
         Crea una comunidad, agrega sus controladores y conecta los periféricos para generar el checklist QA dinámico.
       </p>
-      <button
-        type="button"
-        onClick={onCreateCommunity}
-        className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-sm transition-colors hover:bg-blue-700"
-      >
-        <Plus className="h-4 w-4" />
-        Crear primera comunidad
-      </button>
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+        <button
+          type="button"
+          onClick={onCreateCommunity}
+          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-sm transition-colors hover:bg-blue-700"
+        >
+          <Plus className="h-4 w-4" />
+          Crear primera comunidad
+        </button>
+        <button
+          type="button"
+          onClick={onImportJson}
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+        >
+          <Upload className="h-4 w-4" />
+          Importar JSON
+        </button>
+      </div>
     </section>
   );
+}
+
+
+function parseImportedPayload(rawText) {
+  let parsed;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    throw new Error('El archivo no es un JSON válido.');
+  }
+
+  // El payload exportado tiene { community, taskResults, ... }
+  const community = parsed.community;
+  if (!community || typeof community !== 'object' || !community.name) {
+    throw new Error('El JSON no contiene una comunidad válida (falta "community" o "name").');
+  }
+
+  const taskResults =
+    parsed.taskResults && typeof parsed.taskResults === 'object'
+      ? parsed.taskResults
+      : {};
+
+  return { community, taskResults };
 }
 
 function downloadJson(filename, payload) {
@@ -107,6 +165,8 @@ function sanitizeFilename(value) {
     .replace(/(^-|-$)/g, '') || 'comunidad';
 }
 
+
+
 export default function App() {
   const [communities, setCommunities] = useLocalStorageState('qa-labflow-communities', INITIAL_COMMUNITIES);
   const [selectedCommunityId, setSelectedCommunityId] = useLocalStorageState('qa-labflow-selected-community', null);
@@ -116,6 +176,8 @@ export default function App() {
   const [showReport, setShowReport] = useState(false);
   const [view, setView] = useState('dashboard');
   const [editingCommunityId, setEditingCommunityId] = useState(null);
+  const [importStripResults, setImportStripResults] = useState(false);
+  const fileInputRef = React.useRef(null);
 
   const normalizedCommunities = useMemo(() => {
     return communities.map(normalizeCommunity);
@@ -296,6 +358,68 @@ export default function App() {
     downloadJson(filename, payload);
   };
 
+
+  const handleTriggerImport = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImportJson = event => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = () => {
+    try {
+      const { community, taskResults: parsedResults } = parseImportedPayload(reader.result);
+      const importedResults = importStripResults ? {} : parsedResults;
+      const importedCommunity = normalizeCommunity(community);
+
+      // Conserva el id original; si choca con uno existente, genera uno nuevo
+      const idExists = communities.some(c => c.id === importedCommunity.id);
+      const finalId = !importedCommunity.id || idExists ? Date.now() : importedCommunity.id;
+
+      let remappedResults = importedResults;
+
+      // Si reasignamos id, hay que reescribir los prefijos de los taskId
+      if (finalId !== importedCommunity.id) {
+        const oldPrefix = `community-${importedCommunity.id}-`;
+        const newPrefix = `community-${finalId}-`;
+        remappedResults = Object.fromEntries(
+          Object.entries(importedResults).map(([taskId, result]) => [
+            taskId.startsWith(oldPrefix)
+              ? newPrefix + taskId.slice(oldPrefix.length)
+              : taskId,
+            result,
+          ])
+        );
+      }
+
+      const communityToAdd = { ...importedCommunity, id: finalId };
+
+      setCommunities(prev => [...prev, communityToAdd]);
+      setTaskResults(prev => ({ ...prev, ...remappedResults }));
+      setSelectedCommunityId(finalId);
+      setView('dashboard');
+      setShowReport(false);
+
+      window.alert(`Comunidad "${communityToAdd.name}" importada correctamente.`);
+    } catch (error) {
+      window.alert(`No se pudo importar: ${error.message}`);
+    } finally {
+      // Permite volver a importar el mismo archivo si hace falta
+      event.target.value = '';
+    }
+  };
+
+  reader.onerror = () => {
+    window.alert('Error al leer el archivo.');
+    event.target.value = '';
+  };
+
+  reader.readAsText(file);
+};
+
   const handleShowReport = () => {
     if (hasChecklistFailuresWithoutComment(checklistByPhases, taskResults)) {
       window.alert('Hay pruebas en Fail o Blocked sin observación técnica. Puedes revisar el reporte, pero completa esos comentarios antes de cerrarlo formalmente.');
@@ -331,7 +455,7 @@ export default function App() {
           )}
 
           {view === 'dashboard' && !selectedCommunity && (
-            <EmptyDashboard onCreateCommunity={handleCreateCommunity} />
+            <EmptyDashboard onCreateCommunity={handleCreateCommunity} onImportJson={handleTriggerImport} />
           )}
 
           {view === 'dashboard' && selectedCommunity && (
@@ -352,10 +476,21 @@ export default function App() {
               onResetChecklist={handleResetCurrentChecklist}
               onExportJson={handleExportCurrentJson}
               onEditCommunity={handleEditCommunity}
+              onImportJson={handleTriggerImport}
+              importStripResults={importStripResults}
+              onToggleImportStripResults={setImportStripResults}
             />
           )}
         </div>
       </main>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json"
+        className="hidden"
+        onChange={handleImportJson}
+      />
 
       {showReport && selectedCommunity && (
         <ReportModal

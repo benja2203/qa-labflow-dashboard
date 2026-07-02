@@ -1,4 +1,27 @@
 import { DEFAULT_TASK_RESULT } from '../constants/testStatus.js';
+import { getDirectionLabel, getPortLabel, getRelayLabel, getRelaySourceLabel } from '../constants/accessConfig.js';
+import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
+
+function getRelayDisplay(instance) {
+  const isDeviceRelay = instance.relaySource === 'device';
+
+  const relayLabel = isDeviceRelay
+    ? 'Relé integrado del dispositivo'
+    : instance.relay === 'OTRO'
+      ? (instance.relayNote || 'Relé externo')
+      : instance.relay
+        ? getRelayLabel(instance.relay)
+        : '';
+
+  return {
+    source: instance.relaySource || 'controller',
+    sourceLabel: getRelaySourceLabel(instance.relaySource || 'controller'),
+    relay: instance.relay || '',
+    relayLabel,
+    relayPin: instance.relayPin || '',
+    actionSeconds: instance.actionSeconds || '',
+  };
+}
 
 export function getTaskResult(taskResults, taskId) {
   return taskResults[taskId] || DEFAULT_TASK_RESULT;
@@ -115,6 +138,110 @@ export function hasChecklistFailuresWithoutComment(checklistByPhases, taskResult
 
     return requiresComment && hasNoComment;
   });
+}
+
+export function getTechnicalDeviceReport(selectedCommunity) {
+  const unassignedDevices = [];
+
+  const controllers = (selectedCommunity?.nodes || []).map(node => {
+    const doors = (node.doors || []).map(door => ({
+      id: door.id,
+      name: door.name || 'Puerta sin nombre',
+      zone: door.zone || '',
+      type: door.type || '',
+      devices: [],
+    }));
+
+    const doorsById = Object.fromEntries(doors.map(door => [door.id, door]));
+
+    (node.peripherals || []).forEach(peripheral => {
+      const typeName = DEVICE_CATALOG[peripheral.type]?.name || peripheral.type;
+
+      (peripheral.instances || []).forEach((instance, index) => {
+        const deviceRow = {
+          type: peripheral.type,
+          typeName,
+          label: instance.label?.trim() || `${typeName} #${index + 1}`,
+          direction: instance.direction || '',
+          directionLabel: getDirectionLabel(instance.direction),
+          port: instance.port || '',
+          portLabel: getPortLabel(instance.port, instance.portNote),
+          ip: instance.ip || '',
+          ...getRelayDisplay(instance),
+        };
+
+        const door = instance.doorId ? doorsById[instance.doorId] : null;
+
+        if (door) {
+          door.devices.push(deviceRow);
+        } else {
+          unassignedDevices.push({
+            ...deviceRow,
+            controllerLabel: node.label,
+          });
+        }
+      });
+    });
+
+    return {
+      nodeId: node.id,
+      nodeLabel: node.label,
+      doors,
+    };
+  });
+
+  return { controllers, unassignedDevices };
+}
+
+export function getApprovalBlockers(checklistByPhases, taskResults) {
+  const fullResults = getFullReportTasks(checklistByPhases, taskResults);
+  const blockers = [];
+
+  fullResults.forEach(phase => {
+    phase.devices.forEach(device => {
+      const counts = { fail: 0, blocked: 0, pending: 0 };
+
+      device.tasks.forEach(task => {
+        if (counts[task.status] !== undefined) {
+          counts[task.status] += 1;
+        }
+      });
+
+      const totalBlocking = counts.fail + counts.blocked + counts.pending;
+
+      if (totalBlocking > 0) {
+        blockers.push({
+          phaseName: phase.phaseName,
+          deviceName: device.deviceName,
+          ...counts,
+        });
+      }
+    });
+  });
+
+  return blockers;
+}
+
+export function getApprovalSummaryText(summary, finalLabStatus) {
+  const evaluated = summary.completed;
+  const total = summary.total;
+
+  if (total === 0) {
+    return 'Esta comunidad todavía no tiene checklist generado: agrega controladores y periféricos para empezar a evaluar.';
+  }
+
+  const parts = [`Se evaluaron ${evaluated}/${total} pruebas`];
+  if (summary.pending > 0) parts.push(`(${summary.pending} pendientes)`);
+
+  const resultParts = [];
+  if (summary.pass > 0) resultParts.push(`${summary.pass} Pass`);
+  if (summary.fail > 0) resultParts.push(`${summary.fail} Fail`);
+  if (summary.blocked > 0) resultParts.push(`${summary.blocked} Blocked`);
+  if (summary.na > 0) resultParts.push(`${summary.na} N/A`);
+
+  const resultText = resultParts.length > 0 ? `. ${resultParts.join(', ')}` : '';
+
+  return `${parts.join(' ')}${resultText} → ${finalLabStatus}.`;
 }
 
 export function buildReportPayload({

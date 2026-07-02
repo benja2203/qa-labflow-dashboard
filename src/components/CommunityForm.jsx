@@ -2,6 +2,7 @@ import React from 'react';
 import { useEffect, useState } from 'react';
 import {
   ArrowRight,
+  DoorOpen,
   Plus,
   Server,
   Settings2,
@@ -12,6 +13,14 @@ import {
   Puzzle,
 } from 'lucide-react';
 import { DEVICE_CATALOG, PERIPHERALS, OPTIONAL_MODULES } from '../data/deviceCatalog.jsx';
+import {
+  ACCESS_DIRECTIONS,
+  DOOR_TYPES,
+  PORT_OPTIONS,
+  RELAY_OPTIONS,
+  RELAY_SOURCES,
+  createDoor,
+} from '../constants/accessConfig.js';
 
 const EMPTY_RULES = {
   antipassback: false,
@@ -38,6 +47,16 @@ function normalizePeripheralConfig(peripheral) {
     return {
       id: String(existing?.id ?? createInstanceId(peripheral.type)),
       label: existing?.label || getDefaultInstanceLabel(peripheral.type, index),
+      doorId: existing?.doorId || '',
+      direction: existing?.direction || '',
+      port: existing?.port || '',
+      portNote: existing?.portNote || '',
+      ip: existing?.ip || '',
+      relaySource: existing?.relaySource || 'controller',
+      relay: existing?.relay || '',
+      relayNote: existing?.relayNote || '',
+      relayPin: existing?.relayPin || '',
+      actionSeconds: existing?.actionSeconds || '',
     };
   });
 
@@ -55,6 +74,8 @@ export default function CommunityForm({
   mode = 'create',
 }) {
   const [communityName, setCommunityName] = useState('');
+  const [technicianName, setTechnicianName] = useState('');
+  const [installerName, setInstallerName] = useState('');
   const [nodes, setNodes] = useState([]);
   const [selectedPeripheralForNode, setSelectedPeripheralForNode] = useState({});
   const [selectedModules, setSelectedModules] = useState([]);
@@ -64,6 +85,8 @@ export default function CommunityForm({
   useEffect(() => {
     if (!initialCommunity) {
       setCommunityName('');
+      setTechnicianName('');
+      setInstallerName('');
       setNodes([]);
       setSelectedPeripheralForNode({});
       setSelectedModules([]);
@@ -73,6 +96,7 @@ export default function CommunityForm({
 
     const copiedNodes = JSON.parse(JSON.stringify(initialCommunity.nodes || [])).map(node => ({
       ...node,
+      doors: Array.isArray(node.doors) ? node.doors : [],
       peripherals: (node.peripherals || []).map(normalizePeripheralConfig),
     }));
 
@@ -81,6 +105,8 @@ export default function CommunityForm({
     );
 
     setCommunityName(initialCommunity.name || '');
+    setTechnicianName(initialCommunity.technicianName || '');
+    setInstallerName(initialCommunity.installerName || '');
     setNodes(copiedNodes);
     setSelectedPeripheralForNode(defaultPeripheralSelection);
     setSelectedModules(Array.isArray(initialCommunity.modules) ? initialCommunity.modules : []);
@@ -100,6 +126,7 @@ export default function CommunityForm({
         id: newNodeId,
         type: 'controller',
         label: `Controlador #${prev.length + 1}`,
+        doors: [],
         peripherals: [],
       },
     ]);
@@ -111,6 +138,64 @@ export default function CommunityForm({
     setNodes(prev => prev.map(node => (
       node.id === nodeId ? { ...node, label: newLabel } : node
     )));
+  };
+
+  const handleAddDoor = nodeId => {
+    setNodes(prev => prev.map(node => (
+      node.id === nodeId ? { ...node, doors: [...(node.doors || []), createDoor()] } : node
+    )));
+  };
+
+  const handleUpdateDoor = (nodeId, doorId, patch) => {
+    setNodes(prev => prev.map(node => {
+      if (node.id !== nodeId) return node;
+
+      return {
+        ...node,
+        doors: (node.doors || []).map(door => (
+          door.id === doorId ? { ...door, ...patch } : door
+        )),
+      };
+    }));
+  };
+
+  const handleRemoveDoor = (nodeId, doorId) => {
+    setNodes(prev => prev.map(node => {
+      if (node.id !== nodeId) return node;
+
+      return {
+        ...node,
+        doors: (node.doors || []).filter(door => door.id !== doorId),
+        peripherals: (node.peripherals || []).map(peripheral => ({
+          ...peripheral,
+          instances: (peripheral.instances || []).map(instance => (
+            instance.doorId === doorId ? { ...instance, doorId: '', direction: '' } : instance
+          )),
+        })),
+      };
+    }));
+  };
+
+  const handleUpdateInstanceLink = (nodeId, peripheralType, instanceId, patch) => {
+    setNodes(prev => prev.map(node => {
+      if (node.id !== nodeId) return node;
+
+      return {
+        ...node,
+        peripherals: node.peripherals.map(peripheral => {
+          if (peripheral.type !== peripheralType) return peripheral;
+
+          const normalizedPeripheral = normalizePeripheralConfig(peripheral);
+
+          return {
+            ...normalizedPeripheral,
+            instances: normalizedPeripheral.instances.map(instance => (
+              instance.id === instanceId ? { ...instance, ...patch } : instance
+            )),
+          };
+        }),
+      };
+    }));
   };
 
   const handleRemoveNode = nodeId => {
@@ -269,6 +354,8 @@ export default function CommunityForm({
     onSave({
       id: initialCommunity?.id,
       name: communityName.trim(),
+      technicianName: technicianName.trim(),
+      installerName: installerName.trim(),
       nodes: nodes.map(node => ({
         ...node,
         peripherals: (node.peripherals || []).map(normalizePeripheralConfig),
@@ -279,12 +366,18 @@ export default function CommunityForm({
 
     if (!isEditMode) {
       setCommunityName('');
+      setTechnicianName('');
+      setInstallerName('');
       setNodes([]);
       setSelectedPeripheralForNode({});
       setSelectedModules([]);
       setRules(EMPTY_RULES);
     }
   };
+
+  const knownZones = Array.from(new Set(
+    nodes.flatMap(node => (node.doors || []).map(door => door.zone?.trim()).filter(Boolean))
+  ));
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
@@ -316,6 +409,33 @@ export default function CommunityForm({
             placeholder="Ej. Comunidad Scharfstein, Edificio Norte..."
             className="w-full rounded-lg border border-slate-300 p-3 font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
           />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-2 block text-sm font-bold text-slate-700">
+              Técnico que configuró/ambientó
+            </label>
+            <input
+              type="text"
+              value={technicianName}
+              onChange={event => setTechnicianName(event.target.value)}
+              placeholder="Nombre del técnico responsable"
+              className="w-full rounded-lg border border-slate-300 p-3 font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-bold text-slate-700">
+              Instalador
+            </label>
+            <input
+              type="text"
+              value={installerName}
+              onChange={event => setInstallerName(event.target.value)}
+              placeholder="Nombre del instalador o empresa instaladora"
+              className="w-full rounded-lg border border-slate-300 p-3 font-medium text-slate-800 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
         </div>
 
         <div>
@@ -366,6 +486,72 @@ export default function CommunityForm({
                   </div>
 
                   <div className="p-4">
+                    <div className="mb-5 rounded-lg border border-slate-200 bg-white p-3">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <DoorOpen className="h-4 w-4 text-slate-500" />
+                          <span className="text-sm font-bold text-slate-700">
+                            Puertas de este controlador
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAddDoor(node.id)}
+                          className="flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Agregar puerta
+                        </button>
+                      </div>
+
+                      {(!node.doors || node.doors.length === 0) ? (
+                        <p className="text-xs italic text-slate-400">
+                          Sin puertas registradas. Agrega al menos una para poder mapear qué dispositivo abre cuál puerta.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {node.doors.map(door => (
+                            <div key={door.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                              <div className="grid gap-2 md:grid-cols-12">
+                                <input
+                                  type="text"
+                                  value={door.name}
+                                  onChange={event => handleUpdateDoor(node.id, door.id, { name: event.target.value })}
+                                  placeholder="Nombre de la puerta (ej. Acceso Principal)"
+                                  className="rounded-md border border-slate-300 bg-white p-2 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 md:col-span-5"
+                                />
+                                <input
+                                  type="text"
+                                  list="qa-labflow-zones"
+                                  value={door.zone}
+                                  onChange={event => handleUpdateDoor(node.id, door.id, { zone: event.target.value })}
+                                  placeholder="Zona"
+                                  className="rounded-md border border-slate-300 bg-white p-2 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 md:col-span-3"
+                                />
+                                <select
+                                  value={door.type}
+                                  onChange={event => handleUpdateDoor(node.id, door.id, { type: event.target.value })}
+                                  className="rounded-md border border-slate-300 bg-white p-2 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 md:col-span-3"
+                                >
+                                  {DOOR_TYPES.map(doorType => (
+                                    <option key={doorType.id} value={doorType.id}>{doorType.label}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDoor(node.id, door.id)}
+                                  className="flex items-center justify-center rounded-md p-2 text-red-400 transition-colors hover:bg-red-50 md:col-span-1"
+                                  title="Eliminar puerta"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <div className="mb-4 flex gap-2">
                       <select
                         value={selectedPeripheralForNode[node.id] || 'qr'}
@@ -436,9 +622,9 @@ export default function CommunityForm({
                                 </div>
                               </div>
 
-                              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                              <div className="mt-3 space-y-3">
                                 {normalizedPeripheral.instances.map((instance, index) => (
-                                  <div key={instance.id}>
+                                  <div key={instance.id} className="rounded-md border border-slate-200 bg-slate-50 p-2.5">
                                     <label className="mb-1 block text-[11px] font-black uppercase tracking-wider text-slate-400">
                                       {catalogDevice.name} #{index + 1} - nombre/ubicación
                                     </label>
@@ -452,8 +638,117 @@ export default function CommunityForm({
                                         event.target.value
                                       )}
                                       placeholder="Ej. Entrada principal, salida vehicular, acceso visitas..."
-                                      className="w-full rounded-md border border-slate-200 bg-slate-50 p-2 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                                      className="w-full rounded-md border border-slate-200 bg-white p-2 text-sm font-medium text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                                     />
+
+                                    <div className="mt-2 grid gap-2 md:grid-cols-4">
+                                      <select
+                                        value={instance.doorId}
+                                        onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, {
+                                          doorId: event.target.value,
+                                          ...(event.target.value ? {} : { direction: '' }),
+                                        })}
+                                        className="rounded-md border border-slate-200 bg-white p-2 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
+                                      >
+                                        <option value="">Sin puerta asignada</option>
+                                        {(node.doors || []).map(door => (
+                                          <option key={door.id} value={door.id}>
+                                            {door.name || 'Puerta sin nombre'}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <select
+                                        value={instance.direction}
+                                        disabled={!instance.doorId}
+                                        onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { direction: event.target.value })}
+                                        className="rounded-md border border-slate-200 bg-white p-2 text-xs font-medium text-slate-700 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                      >
+                                        <option value="">Sentido...</option>
+                                        {ACCESS_DIRECTIONS.map(direction => (
+                                          <option key={direction.id} value={direction.id}>{direction.label}</option>
+                                        ))}
+                                      </select>
+                                      <select
+                                        value={instance.port}
+                                        onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { port: event.target.value })}
+                                        className="rounded-md border border-slate-200 bg-white p-2 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
+                                      >
+                                        <option value="">Puerto...</option>
+                                        {PORT_OPTIONS.map(portOption => (
+                                          <option key={portOption.id} value={portOption.id}>{portOption.label}</option>
+                                        ))}
+                                      </select>
+                                      {instance.port === 'OTRO' && (
+                                        <input
+                                          type="text"
+                                          value={instance.portNote}
+                                          onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { portNote: event.target.value })}
+                                          placeholder="Detalle del puerto (ej. red/IP)"
+                                          className="rounded-md border border-slate-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-blue-500"
+                                        />
+                                      )}
+                                      <input
+                                        type="text"
+                                        value={instance.ip}
+                                        onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { ip: event.target.value })}
+                                        placeholder="IP (opcional)"
+                                        className="rounded-md border border-slate-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-blue-500"
+                                      />
+                                    </div>
+
+                                    <div className="mt-2 grid gap-2 md:grid-cols-4">
+                                      <select
+                                        value={instance.relaySource}
+                                        onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { relaySource: event.target.value })}
+                                        className="rounded-md border border-slate-200 bg-white p-2 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
+                                      >
+                                        {RELAY_SOURCES.map(source => (
+                                          <option key={source.id} value={source.id}>{source.label}</option>
+                                        ))}
+                                      </select>
+                                      {instance.relaySource === 'controller' ? (
+                                        <select
+                                          value={instance.relay}
+                                          onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { relay: event.target.value })}
+                                          className="rounded-md border border-slate-200 bg-white p-2 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
+                                        >
+                                          <option value="">Relé...</option>
+                                          {RELAY_OPTIONS.map(relay => (
+                                            <option key={relay.id} value={relay.id}>{relay.label}</option>
+                                          ))}
+                                        </select>
+                                      ) : (
+                                        <div className="flex items-center rounded-md border border-dashed border-slate-200 bg-slate-100 p-2 text-xs italic text-slate-400">
+                                          Usa el relé propio del dispositivo
+                                        </div>
+                                      )}
+                                      {instance.relaySource === 'controller' && instance.relay === 'OTRO' ? (
+                                        <input
+                                          type="text"
+                                          value={instance.relayNote}
+                                          onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { relayNote: event.target.value })}
+                                          placeholder="Detalle (ej. Moxa canal 3)"
+                                          className="rounded-md border border-slate-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-blue-500"
+                                        />
+                                      ) : (
+                                        <input
+                                          type="text"
+                                          value={instance.relayPin}
+                                          onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { relayPin: event.target.value })}
+                                          placeholder="Pin/GPIO (opcional)"
+                                          disabled={instance.relaySource !== 'controller'}
+                                          className="rounded-md border border-slate-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                        />
+                                      )}
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={instance.actionSeconds}
+                                        onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { actionSeconds: event.target.value })}
+                                        placeholder="Segundos de apertura"
+                                        className="rounded-md border border-slate-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-blue-500"
+                                      />
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -472,6 +767,9 @@ export default function CommunityForm({
               ))}
             </div>
           )}
+          <datalist id="qa-labflow-zones">
+            {knownZones.map(zone => <option key={zone} value={zone} />)}
+          </datalist>
         </div>
 
         <div className="pt-4">

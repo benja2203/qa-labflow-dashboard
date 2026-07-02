@@ -8,16 +8,21 @@ import {
   Circle,
   ClipboardList,
   Download,
+  MapPin,
   Network,
   Server,
+  Wrench,
   X,
+  Zap,
 } from 'lucide-react';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
 import { TEST_STATUS } from '../constants/testStatus.js';
 import {
+  getApprovalSummaryText,
   getFinalStatusClasses,
   getFullReportTasks,
   getReportIssues,
+  getTechnicalDeviceReport,
   hasChecklistFailuresWithoutComment,
 } from '../utils/report.js';
 
@@ -128,6 +133,7 @@ export default function ReportModal({
   const issues = getReportIssues(checklistByPhases, taskResults);
   const fullChecklistResults = getFullReportTasks(checklistByPhases, taskResults);
   const coverageRows = getDeviceCoverageRows(fullChecklistResults);
+  const technicalReport = getTechnicalDeviceReport(selectedCommunity);
   const hasInvalidFailures = hasChecklistFailuresWithoutComment(checklistByPhases, taskResults);
   const generatedAt = new Date();
   const enabledModules = getModuleNames(selectedCommunity);
@@ -228,6 +234,16 @@ export default function ReportModal({
                 <MetricCard value={peripheralsCount} label="Periféricos" />
                 <MetricCard value={summary.total} label="Puntos de Control" />
                 <MetricCard value={issues.length} label="Observaciones" className="text-red-500" />
+              </section>
+
+              <section className="pdf-avoid-break mb-8">
+                <h3 className="mb-4 flex items-center gap-2 border-b-2 border-slate-200 pb-2 text-lg font-black text-slate-800">
+                  <ClipboardList className="h-5 w-5 text-blue-500" />
+                  Módulo de Aprobación
+                </h3>
+                <div className={`rounded-xl border p-4 text-sm font-semibold leading-6 ${getFinalStatusClasses(finalLabStatus)}`}>
+                  {getApprovalSummaryText(summary, finalLabStatus)}
+                </div>
               </section>
 
               <section className="pdf-avoid-break mb-8">
@@ -485,6 +501,123 @@ export default function ReportModal({
                     </ul>
                   </div>
                 </div>
+              </section>
+
+              <section>
+                <h3 className="pdf-avoid-break mb-4 flex items-center gap-2 border-b-2 border-slate-200 pb-2 text-lg font-black text-slate-800">
+                  <Wrench className="h-5 w-5 text-blue-500" />
+                  Ficha Técnica: Puertas, Relés, Puertos e IP
+                </h3>
+
+                {(selectedCommunity.technicianName || selectedCommunity.installerName) && (
+                  <div className="pdf-avoid-break mb-4 flex flex-wrap gap-4 rounded-xl border border-slate-200 bg-white p-3 text-xs font-semibold text-slate-600">
+                    {selectedCommunity.technicianName && (
+                      <span>Configurado por: <strong className="text-slate-800">{selectedCommunity.technicianName}</strong></span>
+                    )}
+                    {selectedCommunity.installerName && (
+                      <span>Instalado por: <strong className="text-slate-800">{selectedCommunity.installerName}</strong></span>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-5">
+                  {technicalReport.controllers.map(controller => (
+                    <div key={controller.nodeId} className="pdf-avoid-break">
+                      <div className="mb-2 flex items-center gap-2 text-sm font-black uppercase tracking-wide text-slate-700">
+                        <Server className="h-4 w-4 text-slate-500" />
+                        {controller.nodeLabel}
+                      </div>
+
+                      {controller.doors.length === 0 ? (
+                        <p className="pl-6 text-xs italic text-slate-400">Sin puertas registradas en este controlador.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {controller.doors.map(door => (
+                            <article key={door.id} className="pdf-avoid-break rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="h-4 w-4 text-blue-600" />
+                                  <h5 className="text-sm font-black text-slate-800">{door.name}</h5>
+                                  {door.zone && (
+                                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                                      {door.zone}
+                                    </span>
+                                  )}
+                                </div>
+                                {door.type && (
+                                  <span className="text-[11px] font-medium text-slate-500">Tipo: <strong className="text-slate-700">{door.type}</strong></span>
+                                )}
+                              </div>
+
+                              <div className="mt-3 space-y-1.5">
+                                {door.devices.length === 0 ? (
+                                  <p className="text-xs italic text-slate-400">Ningún dispositivo conectado a esta puerta todavía.</p>
+                                ) : (
+                                  door.devices.map((device, index) => (
+                                    <div key={`${door.id}-${index}`} className="rounded-lg border border-slate-100 bg-slate-50 p-2 text-xs">
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <span>
+                                          <span className="font-bold text-slate-800">{device.typeName}</span>{' '}
+                                          <span className="text-slate-600">{device.label}</span>{' '}
+                                          {device.directionLabel && (
+                                            <span className="rounded-full bg-indigo-50 px-2 py-0.5 font-bold text-indigo-600">
+                                              {device.directionLabel}
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span className="flex items-center gap-1.5 font-bold text-amber-700">
+                                          <Zap className="h-3.5 w-3.5 text-amber-500" />
+                                          {device.relayLabel || 'Sin relé configurado'}
+                                          {device.relayPin && <span className="text-slate-400">(pin {device.relayPin})</span>}
+                                          {device.actionSeconds && <span className="text-slate-500">· {device.actionSeconds}s</span>}
+                                        </span>
+                                      </div>
+                                      <div className="mt-1 text-slate-500">
+                                        {device.portLabel && <>Puerto: {device.portLabel} </>}
+                                        {device.ip && <>IP: {device.ip}</>}
+                                        {!device.portLabel && !device.ip && <EmptyField label="puerto/IP" />}
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {technicalReport.unassignedDevices.length > 0 && (
+                  <div className="pdf-avoid-break mt-5">
+                    <h4 className="mb-2 text-sm font-black uppercase tracking-wide text-amber-600">
+                      Dispositivos sin puerta asignada
+                    </h4>
+                    <div className="space-y-2">
+                      {technicalReport.unassignedDevices.map((device, index) => (
+                        <div key={index} className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span>
+                              <span className="font-bold text-slate-800">{device.typeName}</span>{' '}
+                              <span className="text-slate-600">{device.label}</span>{' '}
+                              <span className="text-slate-400">[{device.controllerLabel}]</span>
+                            </span>
+                            <span className="flex items-center gap-1.5 font-bold text-amber-700">
+                              <Zap className="h-3.5 w-3.5 text-amber-500" />
+                              {device.relayLabel || 'Sin relé configurado'}
+                              {device.actionSeconds && <span className="text-slate-500">· {device.actionSeconds}s</span>}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-slate-500">
+                            {device.portLabel && <>Puerto: {device.portLabel} </>}
+                            {device.ip && <>IP: {device.ip}</>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </section>
             </main>
           </div>
