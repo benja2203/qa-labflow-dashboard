@@ -5,7 +5,7 @@ function stripDoorContext(description) {
   return description.replace(/\s*\([^)]*\)$/, '').trim();
 }
 
-export function buildGeneralReport(communities, taskResults, generalObservationsByCommunity, deliveryExceptionsByCommunity) {
+export function buildGeneralReport(communities, taskResults, generalObservationsByCommunity, deliveryExceptionsByCommunity, closedProjectsByCommunity) {
   const deviceStatsById = new Map();
   const failureTextCounts = new Map();
   const communitySummaries = [];
@@ -14,13 +14,21 @@ export function buildGeneralReport(communities, taskResults, generalObservations
   const totals = { total: 0, pass: 0, fail: 0, blocked: 0, na: 0, pending: 0 };
   const statusDistribution = { APTO: 0, 'NO APTO': 0, BLOQUEADO: 0, 'EN PROGRESO': 0 };
   let deliveredUnderExceptionCount = 0;
+  let closedCount = 0;
 
   communities.forEach(community => {
-    const checklistByPhases = buildChecklistByPhases(community);
-    const summary = createChecklistSummary(checklistByPhases, taskResults);
+    const closedProject = closedProjectsByCommunity?.[community.id];
+    const isClosed = Boolean(closedProject?.closed);
+    // Una comunidad cerrada usa la foto congelada al cerrarla, no el catálogo
+    // actual, para que el reporte agregado no cambie retroactivamente.
+    const checklistByPhases = isClosed ? (closedProject.checklistByPhases || []) : buildChecklistByPhases(community);
+    const communityTaskResults = isClosed ? (closedProject.taskResults || {}) : taskResults;
+    const summary = createChecklistSummary(checklistByPhases, communityTaskResults);
     const finalLabStatus = getFinalLabStatus(summary);
     const exception = deliveryExceptionsByCommunity?.[community.id];
     const deliveredUnderException = Boolean(exception?.active);
+
+    if (isClosed) closedCount += 1;
 
     totals.total += summary.total;
     totals.pass += summary.pass;
@@ -40,6 +48,7 @@ export function buildGeneralReport(communities, taskResults, generalObservations
       finalLabStatus,
       summary,
       deliveredUnderException,
+      isClosed,
     });
 
     checklistByPhases.forEach(phase => {
@@ -58,7 +67,7 @@ export function buildGeneralReport(communities, taskResults, generalObservations
         };
 
         device.tasks.forEach(task => {
-          const status = getTaskResult(taskResults, task.id).status;
+          const status = getTaskResult(communityTaskResults, task.id).status;
           entry.total += 1;
           entry[status] = (entry[status] ?? 0) + 1;
 
@@ -96,6 +105,7 @@ export function buildGeneralReport(communities, taskResults, generalObservations
     totals,
     statusDistribution,
     deliveredUnderExceptionCount,
+    closedCount,
     communitySummaries,
     deviceBreakdown,
     topFailingTests,

@@ -30,6 +30,7 @@ export default function TaskRow({
   toggleCommentBox,
   handleCommentChange,
   handleEvidenceChange,
+  readOnly,
 }) {
   const currentStatus = taskResult.status;
   const hasComment = taskResult.comment?.trim().length > 0;
@@ -69,12 +70,13 @@ export default function TaskRow({
                   <button
                     key={statusKey}
                     type="button"
+                    disabled={readOnly}
                     onClick={() => setTaskStatus(task.id, statusKey)}
                     className={`rounded-full border px-2.5 py-1 text-[11px] font-black transition-all ${
                       isActive
                         ? statusConfig.badge
                         : 'border-slate-200 bg-white text-slate-400 hover:bg-slate-50'
-                    }`}
+                    } ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     {statusConfig.shortLabel}
                   </button>
@@ -114,8 +116,9 @@ export default function TaskRow({
               <textarea
                 value={taskResult.comment || ''}
                 onChange={event => handleCommentChange(task.id, event.target.value)}
+                readOnly={readOnly}
                 placeholder="Describe qué pasó. Ej: El lector QR no registra eventos en dashboard después de lectura válida."
-                className="h-20 w-full resize-none rounded-md border border-red-200 bg-white p-2.5 text-sm text-slate-700 placeholder-slate-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/50"
+                className={`h-20 w-full resize-none rounded-md border border-red-200 bg-white p-2.5 text-sm text-slate-700 placeholder-slate-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/50 ${readOnly ? 'cursor-not-allowed bg-slate-50 opacity-75' : ''}`}
               />
             </div>
 
@@ -126,8 +129,9 @@ export default function TaskRow({
               <textarea
                 value={taskResult.evidence || ''}
                 onChange={event => handleEvidenceChange(task.id, event.target.value)}
+                readOnly={readOnly}
                 placeholder="Pega aquí logs, captura, número de ticket, respuesta API o link de evidencia."
-                className="h-20 w-full resize-none rounded-md border border-slate-200 bg-white p-2.5 text-sm text-slate-700 placeholder-slate-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/50"
+                className={`h-20 w-full resize-none rounded-md border border-slate-200 bg-white p-2.5 text-sm text-slate-700 placeholder-slate-400 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/50 ${readOnly ? 'cursor-not-allowed bg-slate-50 opacity-75' : ''}`}
               />
             </div>
           </div>

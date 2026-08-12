@@ -252,6 +252,7 @@ export function buildReportPayload({
   finalLabStatus,
   generalObservations = [],
   deliveryException = null,
+  closedProject = null,
 }) {
   const currentTaskIds = new Set(getChecklistTaskIds(checklistByPhases));
   const filteredTaskResults = Object.fromEntries(
@@ -267,6 +268,7 @@ export function buildReportPayload({
     taskResults: filteredTaskResults,
     generalObservations,
     deliveryException,
+    closedProject,
     issues: getReportIssues(checklistByPhases, taskResults),
     fullChecklistResults: getFullReportTasks(checklistByPhases, taskResults),
   };

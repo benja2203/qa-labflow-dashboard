@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AlertOctagon, BarChart3, Building, Download, ShieldAlert } from 'lucide-react';
+import { AlertOctagon, BarChart3, Building, Download, Lock, ShieldAlert } from 'lucide-react';
 import { buildGeneralReport } from '../utils/generalReport.js';
 import { getFinalStatusClasses } from '../utils/report.js';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
@@ -24,13 +24,14 @@ export default function GeneralReportView({
   taskResults,
   generalObservationsByCommunity,
   deliveryExceptionsByCommunity,
+  closedProjectsByCommunity,
   onSelectCommunity,
 }) {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   const report = useMemo(
-    () => buildGeneralReport(communities, taskResults, generalObservationsByCommunity, deliveryExceptionsByCommunity),
-    [communities, taskResults, generalObservationsByCommunity, deliveryExceptionsByCommunity]
+    () => buildGeneralReport(communities, taskResults, generalObservationsByCommunity, deliveryExceptionsByCommunity, closedProjectsByCommunity),
+    [communities, taskResults, generalObservationsByCommunity, deliveryExceptionsByCommunity, closedProjectsByCommunity]
   );
 
   const handleDownloadPdf = async () => {
@@ -228,6 +229,9 @@ export default function GeneralReportView({
                 <span className="text-sm font-bold text-slate-800">{entry.name}</span>
                 {entry.deliveredUnderException && (
                   <ShieldAlert className="h-3.5 w-3.5 text-orange-500" />
+                )}
+                {entry.isClosed && (
+                  <Lock className="h-3.5 w-3.5 text-slate-400" />
                 )}
               </div>
               <div className="flex items-center gap-2">

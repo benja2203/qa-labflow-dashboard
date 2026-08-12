@@ -5,7 +5,7 @@ import { DEVICE_CATALOG, INITIAL_COMMUNITIES } from './data/deviceCatalog.jsx';
 import { DEFAULT_TASK_RESULT } from './constants/testStatus.js';
 import { DEFAULT_INSTANCE_LINK } from './constants/accessConfig.js';
 import { useLocalStorageState } from './hooks/useLocalStorageState.js';
-import { buildChecklistByPhases } from './utils/checklist.js';
+import { buildChecklistByPhases, hydrateSnapshotIcons, stripIconsForSnapshot } from './utils/checklist.js';
 import {
   buildReportPayload,
   createChecklistSummary,
@@ -183,7 +183,37 @@ function parseImportedPayload(rawText) {
     ? parsed.deliveryException
     : null;
 
-  return { community, taskResults, generalObservations, deliveryException };
+  const closedProject = parsed.closedProject && typeof parsed.closedProject === 'object'
+    ? parsed.closedProject
+    : null;
+
+  return { community, taskResults, generalObservations, deliveryException, closedProject };
+}
+
+// El snapshot de un proyecto cerrado guarda los taskId con el prefijo
+// `community-{id}-...` de cuando se cerró. Si al importar se reasigna el id
+// de la comunidad, hay que reescribir esos prefijos igual que con taskResults.
+function remapClosedProjectIds(closedProject, oldId, newId) {
+  if (!closedProject) return closedProject;
+
+  const oldPrefix = `community-${oldId}-`;
+  const newPrefix = `community-${newId}-`;
+  const remapId = id => (typeof id === 'string' && id.startsWith(oldPrefix) ? newPrefix + id.slice(oldPrefix.length) : id);
+
+  return {
+    ...closedProject,
+    checklistByPhases: (closedProject.checklistByPhases || []).map(phase => ({
+      ...phase,
+      devices: (phase.devices || []).map(device => ({
+        ...device,
+        id: remapId(device.id),
+        tasks: (device.tasks || []).map(task => ({ ...task, id: remapId(task.id) })),
+      })),
+    })),
+    taskResults: Object.fromEntries(
+      Object.entries(closedProject.taskResults || {}).map(([taskId, result]) => [remapId(taskId), result])
+    ),
+  };
 }
 
 function downloadJson(filename, payload) {
@@ -218,6 +248,7 @@ export default function App() {
   const [taskResults, setTaskResults] = useLocalStorageState('qa-labflow-task-results', {});
   const [generalObservations, setGeneralObservations] = useLocalStorageState('qa-labflow-general-observations', {});
   const [deliveryExceptions, setDeliveryExceptions] = useLocalStorageState('qa-labflow-delivery-exceptions', {});
+  const [closedProjects, setClosedProjects] = useLocalStorageState('qa-labflow-closed-projects', {});
 
   const [commentBoxes, setCommentBoxes] = useState({});
   const [showReport, setShowReport] = useState(false);
@@ -239,13 +270,28 @@ export default function App() {
     return normalizedCommunities.find(community => community.id === editingCommunityId) || null;
   }, [normalizedCommunities, editingCommunityId]);
 
-  const checklistByPhases = useMemo(() => {
+  const liveChecklistByPhases = useMemo(() => {
     return buildChecklistByPhases(selectedCommunity);
   }, [selectedCommunity]);
 
+  const currentClosedProject = useMemo(() => (
+    selectedCommunity ? (closedProjects[selectedCommunity.id] || null) : null
+  ), [closedProjects, selectedCommunity]);
+
+  const isCommunityClosed = Boolean(currentClosedProject?.closed);
+
+  // Un proyecto cerrado ya no se recalcula desde el catálogo actual: se muestra
+  // tal cual quedó la "foto" tomada al momento de cerrarlo, para que cambios
+  // futuros en las pruebas no le agreguen pendientes a algo ya entregado.
+  const checklistByPhases = useMemo(() => (
+    isCommunityClosed ? hydrateSnapshotIcons(currentClosedProject.checklistByPhases) : liveChecklistByPhases
+  ), [isCommunityClosed, currentClosedProject, liveChecklistByPhases]);
+
+  const effectiveTaskResults = isCommunityClosed ? (currentClosedProject.taskResults || {}) : taskResults;
+
   const summary = useMemo(() => {
-    return createChecklistSummary(checklistByPhases, taskResults);
-  }, [checklistByPhases, taskResults]);
+    return createChecklistSummary(checklistByPhases, effectiveTaskResults);
+  }, [checklistByPhases, effectiveTaskResults]);
 
   const finalLabStatus = useMemo(() => getFinalLabStatus(summary), [summary]);
 
@@ -257,9 +303,11 @@ export default function App() {
     selectedCommunity ? (deliveryExceptions[selectedCommunity.id] || null) : null
   ), [deliveryExceptions, selectedCommunity]);
 
-  const getTaskResult = taskId => readTaskResult(taskResults, taskId);
+  const getTaskResult = taskId => readTaskResult(effectiveTaskResults, taskId);
 
   const updateTaskResult = (taskId, patch) => {
+    if (isCommunityClosed) return;
+
     setTaskResults(prev => ({
       ...prev,
       [taskId]: {
@@ -291,6 +339,8 @@ export default function App() {
   };
 
   const toggleDeviceAllTasks = (tasks, isComplete) => {
+    if (isCommunityClosed) return;
+
     setTaskResults(prev => {
       const nextState = { ...prev };
       const nextStatus = isComplete ? 'pending' : 'pass';
@@ -379,6 +429,45 @@ export default function App() {
     });
   };
 
+  const handleCloseProject = () => {
+    if (!selectedCommunity || isCommunityClosed) return;
+
+    const confirmed = window.confirm(
+      `¿Cerrar "${selectedCommunity.name}" como entregado? El checklist quedará congelado tal como está ahora (pruebas, resultados, comentarios y evidencia). No se va a poder editar la topología ni los resultados hasta reabrirlo.`
+    );
+    if (!confirmed) return;
+
+    const currentTaskIds = new Set(getChecklistTaskIds(liveChecklistByPhases));
+    const taskResultsSnapshot = Object.fromEntries(
+      Object.entries(taskResults).filter(([taskId]) => currentTaskIds.has(taskId))
+    );
+
+    setClosedProjects(prev => ({
+      ...prev,
+      [selectedCommunity.id]: {
+        closed: true,
+        closedAt: new Date().toISOString(),
+        checklistByPhases: stripIconsForSnapshot(liveChecklistByPhases),
+        taskResults: taskResultsSnapshot,
+      },
+    }));
+  };
+
+  const handleReopenProject = () => {
+    if (!selectedCommunity || !isCommunityClosed) return;
+
+    const confirmed = window.confirm(
+      `¿Reabrir "${selectedCommunity.name}"? Se pierde la foto congelada: el checklist va a volver a calcularse con las pruebas actuales del sistema, y si se agregaron pruebas nuevas desde que se cerró van a aparecer como pendientes.`
+    );
+    if (!confirmed) return;
+
+    setClosedProjects(prev => {
+      const next = { ...prev };
+      delete next[selectedCommunity.id];
+      return next;
+    });
+  };
+
   const handleCommunityChange = id => {
     setSelectedCommunityId(id);
     setEditingCommunityId(null);
@@ -399,7 +488,7 @@ export default function App() {
   };
 
   const handleEditCommunity = () => {
-    if (!selectedCommunity) return;
+    if (!selectedCommunity || isCommunityClosed) return;
     setEditingCommunityId(selectedCommunity.id);
     setView('create');
     setShowReport(false);
@@ -467,12 +556,18 @@ export default function App() {
       return next;
     });
 
+    setClosedProjects(prev => {
+      const next = { ...prev };
+      delete next[communityId];
+      return next;
+    });
+
     setCommentBoxes({});
     setShowReport(false);
   };
 
   const handleResetCurrentChecklist = () => {
-    if (!selectedCommunity) return;
+    if (!selectedCommunity || isCommunityClosed) return;
 
     const confirmed = window.confirm(`¿Reiniciar el checklist de "${selectedCommunity.name}"? Se borrarán estados, comentarios y evidencia de esta comunidad.`);
     if (!confirmed) return;
@@ -493,11 +588,12 @@ export default function App() {
     const payload = buildReportPayload({
       selectedCommunity,
       checklistByPhases,
-      taskResults,
+      taskResults: effectiveTaskResults,
       summary,
       finalLabStatus,
       generalObservations: currentGeneralObservations,
       deliveryException: currentDeliveryException,
+      closedProject: currentClosedProject,
     });
 
     const filename = `qa-labflow-${sanitizeFilename(selectedCommunity.name)}-${new Date().toISOString().slice(0, 10)}.json`;
@@ -522,10 +618,12 @@ export default function App() {
         taskResults: parsedResults,
         generalObservations: parsedObservations,
         deliveryException: parsedDeliveryException,
+        closedProject: parsedClosedProject,
       } = parseImportedPayload(reader.result);
       const importedResults = importStripResults ? {} : parsedResults;
       const importedObservations = importStripResults ? [] : parsedObservations;
       const importedDeliveryException = importStripResults ? null : parsedDeliveryException;
+      const importedClosedProject = importStripResults ? null : parsedClosedProject;
       const importedCommunity = normalizeCommunity(community);
 
       // Conserva el id original; si choca con uno existente, genera uno nuevo
@@ -549,12 +647,18 @@ export default function App() {
       }
 
       const communityToAdd = { ...importedCommunity, id: finalId };
+      const remappedClosedProject = finalId !== importedCommunity.id
+        ? remapClosedProjectIds(importedClosedProject, importedCommunity.id, finalId)
+        : importedClosedProject;
 
       setCommunities(prev => [...prev, communityToAdd]);
       setTaskResults(prev => ({ ...prev, ...remappedResults }));
       setGeneralObservations(prev => ({ ...prev, [finalId]: importedObservations }));
       if (importedDeliveryException) {
         setDeliveryExceptions(prev => ({ ...prev, [finalId]: importedDeliveryException }));
+      }
+      if (remappedClosedProject) {
+        setClosedProjects(prev => ({ ...prev, [finalId]: remappedClosedProject }));
       }
       setSelectedCommunityId(finalId);
       setView('dashboard');
@@ -578,7 +682,7 @@ export default function App() {
 };
 
   const handleShowReport = () => {
-    if (hasChecklistFailuresWithoutComment(checklistByPhases, taskResults)) {
+    if (hasChecklistFailuresWithoutComment(checklistByPhases, effectiveTaskResults)) {
       window.alert('Hay pruebas en Fail o Blocked sin observación técnica. Puedes revisar el reporte, pero completa esos comentarios antes de cerrarlo formalmente.');
     }
 
@@ -596,6 +700,7 @@ export default function App() {
         onDeleteCommunity={handleDeleteCommunity}
         onImportJson={handleTriggerImport}
         onShowGeneralReport={handleShowGeneralReport}
+        closedProjects={closedProjects}
       />
 
       <main className="h-screen flex-1 overflow-y-auto bg-slate-50/50 p-4 md:p-8">
@@ -619,6 +724,7 @@ export default function App() {
               taskResults={taskResults}
               generalObservationsByCommunity={generalObservations}
               deliveryExceptionsByCommunity={deliveryExceptions}
+              closedProjectsByCommunity={closedProjects}
               onSelectCommunity={handleCommunityChange}
             />
           )}
@@ -631,7 +737,7 @@ export default function App() {
             <Dashboard
               selectedCommunity={selectedCommunity}
               checklistByPhases={checklistByPhases}
-              taskResults={taskResults}
+              taskResults={effectiveTaskResults}
               summary={summary}
               finalLabStatus={finalLabStatus}
               commentBoxes={commentBoxes}
@@ -655,6 +761,10 @@ export default function App() {
               deliveryException={currentDeliveryException}
               onSetDeliveryException={handleSetDeliveryException}
               onClearDeliveryException={handleClearDeliveryException}
+              isClosed={isCommunityClosed}
+              closedAt={currentClosedProject?.closedAt || null}
+              onCloseProject={handleCloseProject}
+              onReopenProject={handleReopenProject}
             />
           )}
         </div>
@@ -672,11 +782,12 @@ export default function App() {
         <ReportModal
           selectedCommunity={selectedCommunity}
           checklistByPhases={checklistByPhases}
-          taskResults={taskResults}
+          taskResults={effectiveTaskResults}
           summary={summary}
           finalLabStatus={finalLabStatus}
           generalObservations={currentGeneralObservations}
           deliveryException={currentDeliveryException}
+          closedProject={currentClosedProject}
           onClose={() => setShowReport(false)}
         />
       )}

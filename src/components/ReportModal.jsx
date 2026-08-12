@@ -135,6 +135,7 @@ export default function ReportModal({
   finalLabStatus,
   generalObservations = [],
   deliveryException = null,
+  closedProject = null,
   onClose,
 }) {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
@@ -170,6 +171,7 @@ export default function ReportModal({
         reportMode,
         generalObservations,
         deliveryException,
+        closedProject,
       });
     } catch (error) {
       console.error('Error generating PDF report:', error);
@@ -219,6 +221,11 @@ export default function ReportModal({
                   {deliveryException?.active && (
                     <div className="mt-1 text-[10px] font-black uppercase tracking-wide text-orange-600">
                       Entregado bajo excepción
+                    </div>
+                  )}
+                  {closedProject?.closed && (
+                    <div className="mt-1 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                      🔒 Proyecto cerrado
                     </div>
                   )}
                 </div>

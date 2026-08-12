@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, Building, ChevronRight, Network, Plus, Trash2, Upload } from 'lucide-react';
+import { BarChart3, Building, ChevronRight, Lock, Network, Plus, Trash2, Upload } from 'lucide-react';
 
 export default function Sidebar({
   communities,
@@ -10,6 +10,7 @@ export default function Sidebar({
   onDeleteCommunity,
   onImportJson,
   onShowGeneralReport,
+  closedProjects,
 }) {
   return (
     <aside className="sticky top-0 z-10 flex h-auto w-full flex-col border-r border-slate-200 bg-white shadow-sm md:h-screen md:w-72">
@@ -66,6 +67,7 @@ export default function Sidebar({
           <div className="flex flex-col gap-2">
             {communities.map(community => {
               const isActive = selectedCommunityId === community.id && view === 'dashboard';
+              const isClosed = Boolean(closedProjects?.[community.id]?.closed);
 
               return (
                 <div
@@ -84,6 +86,9 @@ export default function Sidebar({
                     <div className="flex min-w-0 items-center gap-2">
                       <Building className="h-4 w-4 shrink-0" />
                       <span className="truncate text-sm font-medium">{community.name}</span>
+                      {isClosed && (
+                        <Lock className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      )}
                     </div>
                     <ChevronRight className={`h-4 w-4 shrink-0 ${isActive ? 'opacity-100' : 'opacity-0'}`} />
                   </button>

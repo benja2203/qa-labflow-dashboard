@@ -11,6 +11,7 @@ export default function DeviceCard({
   handleCommentChange,
   handleEvidenceChange,
   toggleDeviceAllTasks,
+  readOnly,
 }) {
   const totalTasks = device.tasks.length;
   const passTasks = device.tasks.filter(task => getTaskResult(task.id).status === 'pass').length;
@@ -81,12 +82,13 @@ export default function DeviceCard({
 
         <button
           type="button"
+          disabled={readOnly}
           onClick={() => toggleDeviceAllTasks(device.tasks, isComplete)}
           className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black transition-all active:scale-95 ${
             isComplete
               ? 'bg-green-100 text-green-700 hover:bg-green-200'
               : 'bg-slate-200 text-slate-600 hover:bg-blue-100 hover:text-blue-700'
-          }`}
+          } ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`}
           title={isComplete ? 'Dejar pruebas como pendientes' : 'Marcar pruebas como Pass'}
         >
           <CheckCircle2 className="h-4 w-4" />
@@ -105,6 +107,7 @@ export default function DeviceCard({
             toggleCommentBox={toggleCommentBox}
             handleCommentChange={handleCommentChange}
             handleEvidenceChange={handleEvidenceChange}
+            readOnly={readOnly}
           />
         ))}
       </div>

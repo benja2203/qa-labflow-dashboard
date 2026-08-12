@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building, CheckCircle2, Download, FileText, RotateCcw, Settings2, Upload, Wrench } from 'lucide-react';
+import { Building, CheckCircle2, Download, FileText, Lock, RotateCcw, Settings2, Unlock, Upload, Wrench } from 'lucide-react';
 import { getFinalStatusClasses } from '../utils/report.js';
 import { filterChecklistByPhases, getAvailableDeviceTypes, getPhaseProgress } from '../utils/checklistFilters.js';
 import { PROCESS_SCOPE } from '../constants/observationScopes.js';
@@ -49,6 +49,10 @@ export default function Dashboard({
   deliveryException,
   onSetDeliveryException,
   onClearDeliveryException,
+  isClosed,
+  closedAt,
+  onCloseProject,
+  onReopenProject,
 }) {
   const [showTechnicalSheet, setShowTechnicalSheet] = useState(false);
   const [statusFilter, setStatusFilter] = useState([]);
@@ -101,8 +105,42 @@ export default function Dashboard({
     setDeviceTypeFilter([]);
   };
 
+  const formattedClosedAt = closedAt
+    ? new Date(closedAt).toLocaleString('es-CL', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+
   return (
     <div>
+      {isClosed && (
+        <section className="mb-6 flex flex-col gap-3 rounded-xl border border-slate-700 bg-slate-800 p-4 text-white sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-white/10 p-2">
+              <Lock className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-wide">Proyecto Cerrado</h3>
+              <p className="text-xs font-medium text-slate-300">
+                Congelado el {formattedClosedAt}. Este checklist ya no se actualiza aunque cambien las pruebas del sistema; la topología y los resultados quedaron bloqueados.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onReopenProject}
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-black text-white transition-colors hover:bg-white/20"
+          >
+            <Unlock className="h-4 w-4" />
+            Reabrir proyecto
+          </button>
+        </section>
+      )}
+
       <section className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
           <div>
@@ -199,7 +237,9 @@ export default function Dashboard({
             <button
               type="button"
               onClick={onEditCommunity}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+              disabled={isClosed}
+              title={isClosed ? 'Reabrí el proyecto para editar la topología.' : undefined}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Settings2 className="h-4 w-4" />
               Editar topología
@@ -243,12 +283,24 @@ export default function Dashboard({
             <button
               type="button"
               onClick={onResetChecklist}
-              disabled={summary.total === 0}
+              disabled={summary.total === 0 || isClosed}
+              title={isClosed ? 'Reabrí el proyecto para reiniciar el checklist.' : undefined}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RotateCcw className="h-4 w-4" />
               Reiniciar checklist
             </button>
+            {!isClosed && (
+              <button
+                type="button"
+                onClick={onCloseProject}
+                disabled={summary.total === 0}
+                className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-xs font-black text-white shadow-sm transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Lock className="h-4 w-4" />
+                Cerrar proyecto
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -300,6 +352,7 @@ export default function Dashboard({
               handleCommentChange={handleCommentChange}
               handleEvidenceChange={handleEvidenceChange}
               toggleDeviceAllTasks={toggleDeviceAllTasks}
+              readOnly={isClosed}
             />
           ))
         )}

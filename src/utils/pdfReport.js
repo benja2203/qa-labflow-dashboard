@@ -523,6 +523,7 @@ export function downloadStructuredPdfReport({
   reportMode = 'compact',
   generalObservations = [],
   deliveryException = null,
+  closedProject = null,
 }) {
   const doc = new jsPDF({
     unit: 'mm',
@@ -562,7 +563,7 @@ export function downloadStructuredPdfReport({
   doc.setFontSize(8.5);
   setTextColor(doc, COLORS.slate300);
   doc.text(
-    `Generado: ${generatedAt.toLocaleString('es-CL')} | Estado final: ${finalLabStatus}${deliveryException?.active ? ' (entregado bajo excepcion)' : ''} | Tipo: ${reportModeLabel}`,
+    `Generado: ${generatedAt.toLocaleString('es-CL')} | Estado final: ${finalLabStatus}${deliveryException?.active ? ' (entregado bajo excepcion)' : ''}${closedProject?.closed ? ' (proyecto cerrado)' : ''} | Tipo: ${reportModeLabel}`,
     PAGE.margin,
     35
   );
@@ -926,7 +927,7 @@ export function downloadGeneralReportPdf({ report }) {
   report.communitySummaries.forEach(entry => {
     writer.ensurePage(14);
     writer.addParagraph(
-      `${entry.name} - ${entry.finalLabStatus}${entry.deliveredUnderException ? ' (entregado bajo excepcion)' : ''}`,
+      `${entry.name} - ${entry.finalLabStatus}${entry.deliveredUnderException ? ' (entregado bajo excepcion)' : ''}${entry.isClosed ? ' (cerrado)' : ''}`,
       { fontStyle: 'bold', color: COLORS.slate900 }
     );
     writer.addParagraph(

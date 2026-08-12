@@ -10,6 +10,7 @@ export default function PhaseSection({
   handleCommentChange,
   handleEvidenceChange,
   toggleDeviceAllTasks,
+  readOnly,
 }) {
   return (
     <section className="relative">
@@ -35,6 +36,7 @@ export default function PhaseSection({
             handleCommentChange={handleCommentChange}
             handleEvidenceChange={handleEvidenceChange}
             toggleDeviceAllTasks={toggleDeviceAllTasks}
+            readOnly={readOnly}
           />
         ))}
       </div>

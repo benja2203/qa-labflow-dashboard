@@ -317,3 +317,24 @@ export function buildChecklistByPhases(selectedCommunity) {
 
   return Object.values(phases).sort((a, b) => a.phaseNumber - b.phaseNumber);
 }
+
+// Los devices generados en memoria llevan `icon` como elemento React (JSX),
+// que no es serializable a JSON/localStorage. Al cerrar un proyecto se
+// guarda una foto del checklist sin el icono, y se reconstruye al leerla
+// usando el catálogo actual (el icono es solo cosmético, no afecta qué se probó).
+export function stripIconsForSnapshot(checklistByPhases) {
+  return checklistByPhases.map(phase => ({
+    ...phase,
+    devices: phase.devices.map(({ icon, ...device }) => ({ ...device })),
+  }));
+}
+
+export function hydrateSnapshotIcons(checklistByPhases) {
+  return (checklistByPhases || []).map(phase => ({
+    ...phase,
+    devices: phase.devices.map(device => ({
+      ...device,
+      icon: DEVICE_CATALOG[device.type]?.icon || null,
+    })),
+  }));
+}
