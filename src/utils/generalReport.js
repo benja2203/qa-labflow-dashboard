@@ -100,6 +100,9 @@ export function buildGeneralReport(communities, taskResults, generalObservations
     .sort((a, b) => b.count - a.count)
     .slice(0, 15);
 
+  const pendingObservationsCount = allObservations.filter(observation => !observation.resolved).length;
+  const resolvedObservationsCount = allObservations.length - pendingObservationsCount;
+
   return {
     communitiesCount: communities.length,
     totals,
@@ -110,5 +113,7 @@ export function buildGeneralReport(communities, taskResults, generalObservations
     deviceBreakdown,
     topFailingTests,
     generalObservations: allObservations,
+    pendingObservationsCount,
+    resolvedObservationsCount,
   };
 }

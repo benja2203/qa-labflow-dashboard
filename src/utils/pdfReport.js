@@ -638,9 +638,9 @@ export function downloadStructuredPdfReport({
     writer.addSectionTitle('Observaciones generales (para mejora)');
     generalObservations.forEach((observation, index) => {
       writer.ensurePage(20);
-      writer.addParagraph(`${index + 1}. ${observation.title}`, {
+      writer.addParagraph(`${index + 1}. ${observation.title} (${observation.resolved ? 'Resuelta' : 'Pendiente'})`, {
         fontStyle: 'bold',
-        color: COLORS.purple600,
+        color: observation.resolved ? COLORS.green600 : COLORS.purple600,
       });
       writer.addLabelValue('Alcance', getObservationScopeLabels(observation.scope).join(', '));
       writer.addLabelValue('Detalle', observation.description);
@@ -908,11 +908,16 @@ export function downloadGeneralReportPdf({ report }) {
 
   if (report.generalObservations.length > 0) {
     writer.addSectionTitle('Observaciones generales consolidadas');
+    writer.addParagraph(
+      `${report.pendingObservationsCount} pendientes - ${report.resolvedObservationsCount} resueltas`,
+      { fontSize: 8.5, fontStyle: 'bold', color: COLORS.slate500 }
+    );
+    writer.addGap(2);
     report.generalObservations.forEach((observation, index) => {
       writer.ensurePage(20);
-      writer.addParagraph(`${index + 1}. [${observation.communityName}] ${observation.title}`, {
+      writer.addParagraph(`${index + 1}. [${observation.communityName}] ${observation.title} (${observation.resolved ? 'Resuelta' : 'Pendiente'})`, {
         fontStyle: 'bold',
-        color: COLORS.purple600,
+        color: observation.resolved ? COLORS.green600 : COLORS.purple600,
       });
       writer.addParagraph(`Alcance: ${getObservationScopeLabels(observation.scope).join(', ')}`, {
         fontSize: 7.5,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertOctagon, Check, Copy, Pencil, Plus, Trash2 } from 'lucide-react';
+import { AlertOctagon, Check, CheckCircle2, Circle, Copy, Pencil, Plus, Trash2 } from 'lucide-react';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
 import { resolveObservationScopeLabel } from '../constants/observationScopes.js';
 
@@ -29,6 +29,24 @@ function ScopeBadge({ children }) {
     <span className="inline-block rounded-full border border-purple-200 bg-purple-100 px-2.5 py-0.5 text-[11px] font-black text-purple-700">
       {children}
     </span>
+  );
+}
+
+function ResolvedToggle({ resolved, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={resolved ? 'Marcar como pendiente' : 'Marcar como resuelta'}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-black transition-colors ${
+        resolved
+          ? 'border-green-300 bg-green-50 text-green-700 hover:bg-green-100'
+          : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+      }`}
+    >
+      {resolved ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
+      {resolved ? 'Resuelta' : 'Pendiente'}
+    </button>
   );
 }
 
@@ -111,7 +129,7 @@ function ObservationForm({ deviceTypeOptions, initialValues, onCancel, onSubmit 
   );
 }
 
-function ObservationCard({ observation, onEdit, onDelete }) {
+function ObservationCard({ observation, onEdit, onDelete, onToggleResolved }) {
   const [copied, setCopied] = useState(false);
   const scopeLabels = getScopeLabels(observation.scope);
 
@@ -119,6 +137,7 @@ function ObservationCard({ observation, onEdit, onDelete }) {
     const text = [
       `[Observación General] ${observation.title}`,
       `Alcance: ${scopeLabels.join(', ')}`,
+      `Estado: ${observation.resolved ? 'Resuelta' : 'Pendiente'}`,
       '',
       observation.description,
     ].join('\n');
@@ -137,6 +156,7 @@ function ObservationCard({ observation, onEdit, onDelete }) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex flex-wrap gap-1.5">
+            <ResolvedToggle resolved={Boolean(observation.resolved)} onClick={onToggleResolved} />
             {scopeLabels.map(label => (
               <ScopeBadge key={label}>{label}</ScopeBadge>
             ))}
@@ -248,6 +268,7 @@ export default function GeneralObservations({
                 setIsAdding(false);
               }}
               onDelete={() => onDelete(observation.id)}
+              onToggleResolved={() => onUpdate(observation.id, { resolved: !observation.resolved })}
             />
           )
         ))}

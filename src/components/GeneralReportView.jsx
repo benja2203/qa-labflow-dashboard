@@ -187,16 +187,28 @@ export default function GeneralReportView({
 
       {report.generalObservations.length > 0 && (
         <section className="mb-8 rounded-xl border border-purple-200 bg-purple-50/40 p-6">
-          <h3 className="mb-4 flex items-center gap-2 text-sm font-black uppercase tracking-wide text-purple-800">
-            <AlertOctagon className="h-4 w-4" />
-            Observaciones Generales consolidadas
-          </h3>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-purple-800">
+              <AlertOctagon className="h-4 w-4" />
+              Observaciones Generales consolidadas
+            </h3>
+            <span className="text-xs font-bold text-purple-700">
+              {report.pendingObservationsCount} pendientes · {report.resolvedObservationsCount} resueltas
+            </span>
+          </div>
           <div className="space-y-2">
             {report.generalObservations.map((observation, index) => (
               <article key={`${observation.id}-${index}`} className="rounded-lg border border-purple-200 bg-white p-3 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs font-black uppercase tracking-wide text-purple-600">{observation.communityName}</p>
                   <div className="flex flex-wrap gap-1">
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${
+                      observation.resolved
+                        ? 'border-green-300 bg-green-50 text-green-700'
+                        : 'border-amber-300 bg-amber-50 text-amber-700'
+                    }`}>
+                      {observation.resolved ? 'Resuelta' : 'Pendiente'}
+                    </span>
                     {getScopeLabels(observation.scope).map(label => (
                       <span key={label} className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-black text-purple-700">
                         {label}

@@ -366,6 +366,7 @@ export default function App() {
       title,
       description,
       scope,
+      resolved: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

@@ -317,6 +317,13 @@ export default function ReportModal({
                     {generalObservations.map((observation, index) => (
                       <article key={observation.id || index} className="pdf-avoid-break rounded-r-xl border-l-4 border-purple-500 bg-white p-4 shadow-sm">
                         <div className="mb-2 flex flex-wrap gap-1.5">
+                          <span className={`inline-block rounded-full border px-2.5 py-0.5 text-[11px] font-black ${
+                            observation.resolved
+                              ? 'border-green-300 bg-green-50 text-green-700'
+                              : 'border-amber-300 bg-amber-50 text-amber-700'
+                          }`}>
+                            {observation.resolved ? 'Resuelta' : 'Pendiente'}
+                          </span>
                           {getObservationScopeLabels(observation.scope).map(label => (
                             <span key={label} className="inline-block rounded-full border border-purple-200 bg-purple-100 px-2.5 py-0.5 text-[11px] font-black text-purple-700">
                               {label}
