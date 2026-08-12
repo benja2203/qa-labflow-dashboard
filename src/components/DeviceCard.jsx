@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2 } from 'lucide-react';
+import { Camera, CheckCircle2, CreditCard } from 'lucide-react';
 import TaskRow from './TaskRow.jsx';
 
 export default function DeviceCard({
@@ -57,8 +57,19 @@ export default function DeviceCard({
               {device.relayInfo?.relayLabel && (
                 <span className="inline-block rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
                   {device.relayInfo.relayLabel}
-                  {device.relayInfo.relayPin ? ` (pin ${device.relayInfo.relayPin})` : ''}
                   {device.relayInfo.actionSeconds ? ` · ${device.relayInfo.actionSeconds}s` : ''}
+                </span>
+              )}
+              {device.cameraEnabled && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700">
+                  <Camera className="h-3 w-3" />
+                  {device.cameraIp ? `Cám: ${device.cameraIp}` : 'Cámara IP'}
+                </span>
+              )}
+              {device.cardReaderEnabled && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
+                  <CreditCard className="h-3 w-3" />
+                  Lector de carnet
                 </span>
               )}
             </div>

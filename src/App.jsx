@@ -1,7 +1,7 @@
 import React from 'react';
 import { useMemo, useState } from 'react';
 import { ClipboardCheck, Plus, Upload } from 'lucide-react';
-import { INITIAL_COMMUNITIES } from './data/deviceCatalog.jsx';
+import { DEVICE_CATALOG, INITIAL_COMMUNITIES } from './data/deviceCatalog.jsx';
 import { DEFAULT_TASK_RESULT } from './constants/testStatus.js';
 import { DEFAULT_INSTANCE_LINK } from './constants/accessConfig.js';
 import { useLocalStorageState } from './hooks/useLocalStorageState.js';
@@ -18,11 +18,13 @@ import Sidebar from './components/Sidebar.jsx';
 import CommunityForm from './components/CommunityForm.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import ReportModal from './components/ReportModal.jsx';
+import GeneralReportView from './components/GeneralReportView.jsx';
 
 
 
 const LEGACY_CONTROLLER_TYPE = ['mod', 'berry'].join('');
 const LEGACY_CONTROLLER_LABEL = new RegExp(['mod', 'berry'].join(''), 'gi');
+const LEGACY_GUARD_TYPE = 'guard';
 
 function normalizePeripheralConfig(peripheral) {
   const qty = Math.max(1, Number(peripheral.qty) || 1);
@@ -44,10 +46,14 @@ function normalizePeripheralConfig(peripheral) {
         portNote: existing?.portNote || '',
         ip: existing?.ip || '',
         relaySource: existing?.relaySource || 'controller',
-        relay: existing?.relay || '',
+        relays: Array.isArray(existing?.relays)
+          ? existing.relays
+          : (existing?.relay ? [existing.relay] : []),
         relayNote: existing?.relayNote || '',
-        relayPin: existing?.relayPin || '',
         actionSeconds: existing?.actionSeconds || '',
+        cameraEnabled: existing?.cameraEnabled ?? false,
+        cameraIp: existing?.cameraIp || '',
+        cardReaderEnabled: existing?.cardReaderEnabled ?? false,
       };
     }),
   };
@@ -65,21 +71,52 @@ function normalizeDoor(door) {
 function normalizeCommunity(community) {
   if (!community) return community;
 
+  // Collect module IDs that ended up as peripherals (e.g. "remoto" before it became a module)
+  const migratedModuleIds = new Set();
+  (community.nodes || []).forEach(node => {
+    (node.peripherals || []).forEach(p => {
+      const entry = DEVICE_CATALOG[p.type];
+      if (entry && entry.role === 'optionalModule') migratedModuleIds.add(p.type);
+    });
+  });
+
+  const baseModules = Array.isArray(community.modules)
+    ? community.modules
+    : Array.isArray(community.enabledModules)
+      ? community.enabledModules
+      : [];
+  const mergedModules = [...new Set([...baseModules, ...migratedModuleIds])];
+
   return {
     ...community,
     technicianName: community.technicianName || '',
     installerName: community.installerName || '',
-    modules: Array.isArray(community.modules)
-      ? community.modules
-      : Array.isArray(community.enabledModules)
-        ? community.enabledModules
+    modules: mergedModules,
+    rules: {
+      ...(community.rules || {}),
+      antipassback: Boolean(community.rules?.antipassback),
+      antipassbackDoorIds: Array.isArray(community.rules?.antipassbackDoorIds)
+        ? community.rules.antipassbackDoorIds
         : [],
+      multivalidation: Boolean(community.rules?.multivalidation),
+      multiFactors: Array.isArray(community.rules?.multiFactors) ? community.rules.multiFactors : [],
+      cancelInvitation: Boolean(community.rules?.cancelInvitation),
+      cancelInvitationDoorIds: Array.isArray(community.rules?.cancelInvitationDoorIds)
+        ? community.rules.cancelInvitationDoorIds
+        : [],
+    },
     nodes: (community.nodes || []).map(node => ({
       ...node,
       type: node.type === LEGACY_CONTROLLER_TYPE ? 'controller' : node.type,
       label: String(node.label || '').replace(LEGACY_CONTROLLER_LABEL, 'Controlador'),
       doors: Array.isArray(node.doors) ? node.doors.map(normalizeDoor) : [],
-      peripherals: (node.peripherals || []).map(normalizePeripheralConfig),
+      peripherals: (node.peripherals || [])
+        .map(p => (p.type === LEGACY_GUARD_TYPE ? { ...p, type: 'guardDesk' } : p))
+        .filter(p => {
+          const entry = DEVICE_CATALOG[p.type];
+          return entry && entry.role === 'peripheral';
+        })
+        .map(normalizePeripheralConfig),
     })),
   };
 }
@@ -138,7 +175,15 @@ function parseImportedPayload(rawText) {
       ? parsed.taskResults
       : {};
 
-  return { community, taskResults };
+  const generalObservations = Array.isArray(parsed.generalObservations)
+    ? parsed.generalObservations
+    : [];
+
+  const deliveryException = parsed.deliveryException && typeof parsed.deliveryException === 'object'
+    ? parsed.deliveryException
+    : null;
+
+  return { community, taskResults, generalObservations, deliveryException };
 }
 
 function downloadJson(filename, payload) {
@@ -171,6 +216,8 @@ export default function App() {
   const [communities, setCommunities] = useLocalStorageState('qa-labflow-communities', INITIAL_COMMUNITIES);
   const [selectedCommunityId, setSelectedCommunityId] = useLocalStorageState('qa-labflow-selected-community', null);
   const [taskResults, setTaskResults] = useLocalStorageState('qa-labflow-task-results', {});
+  const [generalObservations, setGeneralObservations] = useLocalStorageState('qa-labflow-general-observations', {});
+  const [deliveryExceptions, setDeliveryExceptions] = useLocalStorageState('qa-labflow-delivery-exceptions', {});
 
   const [commentBoxes, setCommentBoxes] = useState({});
   const [showReport, setShowReport] = useState(false);
@@ -201,6 +248,14 @@ export default function App() {
   }, [checklistByPhases, taskResults]);
 
   const finalLabStatus = useMemo(() => getFinalLabStatus(summary), [summary]);
+
+  const currentGeneralObservations = useMemo(() => (
+    selectedCommunity ? (generalObservations[selectedCommunity.id] || []) : []
+  ), [generalObservations, selectedCommunity]);
+
+  const currentDeliveryException = useMemo(() => (
+    selectedCommunity ? (deliveryExceptions[selectedCommunity.id] || null) : null
+  ), [deliveryExceptions, selectedCommunity]);
 
   const getTaskResult = taskId => readTaskResult(taskResults, taskId);
 
@@ -253,6 +308,77 @@ export default function App() {
     });
   };
 
+  const handleAddGeneralObservation = ({ title, description, scope }) => {
+    if (!selectedCommunity) return;
+
+    const newObservation = {
+      id: `obs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title,
+      description,
+      scope,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setGeneralObservations(prev => ({
+      ...prev,
+      [selectedCommunity.id]: [...(prev[selectedCommunity.id] || []), newObservation],
+    }));
+  };
+
+  const handleUpdateGeneralObservation = (observationId, patch) => {
+    if (!selectedCommunity) return;
+
+    setGeneralObservations(prev => ({
+      ...prev,
+      [selectedCommunity.id]: (prev[selectedCommunity.id] || []).map(observation => (
+        observation.id === observationId
+          ? { ...observation, ...patch, updatedAt: new Date().toISOString() }
+          : observation
+      )),
+    }));
+  };
+
+  const handleDeleteGeneralObservation = observationId => {
+    if (!selectedCommunity) return;
+
+    const confirmed = window.confirm('¿Eliminar esta observación general?');
+    if (!confirmed) return;
+
+    setGeneralObservations(prev => ({
+      ...prev,
+      [selectedCommunity.id]: (prev[selectedCommunity.id] || []).filter(observation => observation.id !== observationId),
+    }));
+  };
+
+  const handleSetDeliveryException = ({ authorizedBy, reason }) => {
+    if (!selectedCommunity) return;
+
+    setDeliveryExceptions(prev => ({
+      ...prev,
+      [selectedCommunity.id]: {
+        active: true,
+        authorizedBy,
+        reason,
+        createdAt: prev[selectedCommunity.id]?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  };
+
+  const handleClearDeliveryException = () => {
+    if (!selectedCommunity) return;
+
+    const confirmed = window.confirm('¿Quitar la excepción de entrega registrada para esta comunidad?');
+    if (!confirmed) return;
+
+    setDeliveryExceptions(prev => {
+      const next = { ...prev };
+      delete next[selectedCommunity.id];
+      return next;
+    });
+  };
+
   const handleCommunityChange = id => {
     setSelectedCommunityId(id);
     setEditingCommunityId(null);
@@ -263,6 +389,12 @@ export default function App() {
   const handleCreateCommunity = () => {
     setEditingCommunityId(null);
     setView('create');
+    setShowReport(false);
+  };
+
+  const handleShowGeneralReport = () => {
+    setEditingCommunityId(null);
+    setView('generalReport');
     setShowReport(false);
   };
 
@@ -323,6 +455,18 @@ export default function App() {
       Object.entries(prev).filter(([taskId]) => !taskId.startsWith(`community-${communityId}-`))
     ));
 
+    setGeneralObservations(prev => {
+      const next = { ...prev };
+      delete next[communityId];
+      return next;
+    });
+
+    setDeliveryExceptions(prev => {
+      const next = { ...prev };
+      delete next[communityId];
+      return next;
+    });
+
     setCommentBoxes({});
     setShowReport(false);
   };
@@ -352,6 +496,8 @@ export default function App() {
       taskResults,
       summary,
       finalLabStatus,
+      generalObservations: currentGeneralObservations,
+      deliveryException: currentDeliveryException,
     });
 
     const filename = `qa-labflow-${sanitizeFilename(selectedCommunity.name)}-${new Date().toISOString().slice(0, 10)}.json`;
@@ -371,8 +517,15 @@ export default function App() {
 
   reader.onload = () => {
     try {
-      const { community, taskResults: parsedResults } = parseImportedPayload(reader.result);
+      const {
+        community,
+        taskResults: parsedResults,
+        generalObservations: parsedObservations,
+        deliveryException: parsedDeliveryException,
+      } = parseImportedPayload(reader.result);
       const importedResults = importStripResults ? {} : parsedResults;
+      const importedObservations = importStripResults ? [] : parsedObservations;
+      const importedDeliveryException = importStripResults ? null : parsedDeliveryException;
       const importedCommunity = normalizeCommunity(community);
 
       // Conserva el id original; si choca con uno existente, genera uno nuevo
@@ -399,6 +552,10 @@ export default function App() {
 
       setCommunities(prev => [...prev, communityToAdd]);
       setTaskResults(prev => ({ ...prev, ...remappedResults }));
+      setGeneralObservations(prev => ({ ...prev, [finalId]: importedObservations }));
+      if (importedDeliveryException) {
+        setDeliveryExceptions(prev => ({ ...prev, [finalId]: importedDeliveryException }));
+      }
       setSelectedCommunityId(finalId);
       setView('dashboard');
       setShowReport(false);
@@ -437,6 +594,8 @@ export default function App() {
         onSelectCommunity={handleCommunityChange}
         onCreateCommunity={handleCreateCommunity}
         onDeleteCommunity={handleDeleteCommunity}
+        onImportJson={handleTriggerImport}
+        onShowGeneralReport={handleShowGeneralReport}
       />
 
       <main className="h-screen flex-1 overflow-y-auto bg-slate-50/50 p-4 md:p-8">
@@ -451,6 +610,16 @@ export default function App() {
                 setView('dashboard');
               }}
               onSave={handleSaveCommunity}
+            />
+          )}
+
+          {view === 'generalReport' && (
+            <GeneralReportView
+              communities={normalizedCommunities}
+              taskResults={taskResults}
+              generalObservationsByCommunity={generalObservations}
+              deliveryExceptionsByCommunity={deliveryExceptions}
+              onSelectCommunity={handleCommunityChange}
             />
           )}
 
@@ -479,6 +648,13 @@ export default function App() {
               onImportJson={handleTriggerImport}
               importStripResults={importStripResults}
               onToggleImportStripResults={setImportStripResults}
+              generalObservations={currentGeneralObservations}
+              onAddGeneralObservation={handleAddGeneralObservation}
+              onUpdateGeneralObservation={handleUpdateGeneralObservation}
+              onDeleteGeneralObservation={handleDeleteGeneralObservation}
+              deliveryException={currentDeliveryException}
+              onSetDeliveryException={handleSetDeliveryException}
+              onClearDeliveryException={handleClearDeliveryException}
             />
           )}
         </div>
@@ -499,6 +675,8 @@ export default function App() {
           taskResults={taskResults}
           summary={summary}
           finalLabStatus={finalLabStatus}
+          generalObservations={currentGeneralObservations}
+          deliveryException={currentDeliveryException}
           onClose={() => setShowReport(false)}
         />
       )}

@@ -2,6 +2,9 @@ import React from 'react';
 import { useEffect, useState } from 'react';
 import {
   ArrowRight,
+  Ban,
+  Camera,
+  CreditCard,
   DoorOpen,
   Plus,
   Server,
@@ -15,6 +18,8 @@ import {
 import { DEVICE_CATALOG, PERIPHERALS, OPTIONAL_MODULES } from '../data/deviceCatalog.jsx';
 import {
   ACCESS_DIRECTIONS,
+  CAMERA_CAPABLE_TYPES,
+  CARD_READER_CAPABLE_TYPES,
   DOOR_TYPES,
   PORT_OPTIONS,
   RELAY_OPTIONS,
@@ -24,8 +29,11 @@ import {
 
 const EMPTY_RULES = {
   antipassback: false,
+  antipassbackDoorIds: [],
   multivalidation: false,
   multiFactors: [],
+  cancelInvitation: false,
+  cancelInvitationDoorIds: [],
 };
 
 function createInstanceId(type) {
@@ -53,10 +61,14 @@ function normalizePeripheralConfig(peripheral) {
       portNote: existing?.portNote || '',
       ip: existing?.ip || '',
       relaySource: existing?.relaySource || 'controller',
-      relay: existing?.relay || '',
+      relays: Array.isArray(existing?.relays)
+        ? existing.relays
+        : (existing?.relay ? [existing.relay] : []),
       relayNote: existing?.relayNote || '',
-      relayPin: existing?.relayPin || '',
       actionSeconds: existing?.actionSeconds || '',
+      cameraEnabled: existing?.cameraEnabled ?? false,
+      cameraIp: existing?.cameraIp || '',
+      cardReaderEnabled: existing?.cardReaderEnabled ?? false,
     };
   });
 
@@ -112,8 +124,15 @@ export default function CommunityForm({
     setSelectedModules(Array.isArray(initialCommunity.modules) ? initialCommunity.modules : []);
     setRules({
       antipassback: Boolean(initialCommunity.rules?.antipassback),
+      antipassbackDoorIds: Array.isArray(initialCommunity.rules?.antipassbackDoorIds)
+        ? initialCommunity.rules.antipassbackDoorIds
+        : [],
       multivalidation: Boolean(initialCommunity.rules?.multivalidation),
       multiFactors: initialCommunity.rules?.multiFactors || [],
+      cancelInvitation: Boolean(initialCommunity.rules?.cancelInvitation),
+      cancelInvitationDoorIds: Array.isArray(initialCommunity.rules?.cancelInvitationDoorIds)
+        ? initialCommunity.rules.cancelInvitationDoorIds
+        : [],
     });
   }, [initialCommunity]);
 
@@ -174,6 +193,31 @@ export default function CommunityForm({
         })),
       };
     }));
+    setRules(prev => ({
+      ...prev,
+      antipassbackDoorIds: prev.antipassbackDoorIds.filter(id => id !== doorId),
+      cancelInvitationDoorIds: (prev.cancelInvitationDoorIds || []).filter(id => id !== doorId),
+    }));
+  };
+
+  const handleToggleAntipassbackDoor = doorId => {
+    setRules(prev => {
+      const current = prev.antipassbackDoorIds || [];
+      const next = current.includes(doorId)
+        ? current.filter(id => id !== doorId)
+        : [...current, doorId];
+      return { ...prev, antipassbackDoorIds: next };
+    });
+  };
+
+  const handleToggleCancelInvitationDoor = doorId => {
+    setRules(prev => {
+      const current = prev.cancelInvitationDoorIds || [];
+      const next = current.includes(doorId)
+        ? current.filter(id => id !== doorId)
+        : [...current, doorId];
+      return { ...prev, cancelInvitationDoorIds: next };
+    });
   };
 
   const handleUpdateInstanceLink = (nodeId, peripheralType, instanceId, patch) => {
@@ -580,6 +624,7 @@ export default function CommunityForm({
                       <div className="space-y-3">
                         {node.peripherals.map(peripheral => {
                           const catalogDevice = DEVICE_CATALOG[peripheral.type];
+                          if (!catalogDevice || catalogDevice.role !== 'peripheral') return null;
                           const normalizedPeripheral = normalizePeripheralConfig(peripheral);
 
                           return (
@@ -699,56 +744,118 @@ export default function CommunityForm({
                                     <div className="mt-2 grid gap-2 md:grid-cols-4">
                                       <select
                                         value={instance.relaySource}
-                                        onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { relaySource: event.target.value })}
+                                        onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, {
+                                          relaySource: event.target.value,
+                                          ...(event.target.value === 'device' ? { relays: [] } : {}),
+                                        })}
                                         className="rounded-md border border-slate-200 bg-white p-2 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
                                       >
                                         {RELAY_SOURCES.map(source => (
                                           <option key={source.id} value={source.id}>{source.label}</option>
                                         ))}
                                       </select>
+
                                       {instance.relaySource === 'controller' ? (
-                                        <select
-                                          value={instance.relay}
-                                          onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { relay: event.target.value })}
-                                          className="rounded-md border border-slate-200 bg-white p-2 text-xs font-medium text-slate-700 outline-none focus:border-blue-500"
-                                        >
-                                          <option value="">Relé...</option>
-                                          {RELAY_OPTIONS.map(relay => (
-                                            <option key={relay.id} value={relay.id}>{relay.label}</option>
-                                          ))}
-                                        </select>
+                                        <div className="flex flex-wrap items-center gap-1 md:col-span-2">
+                                          {RELAY_OPTIONS.map(relayOpt => {
+                                            const isSelected = (instance.relays || []).includes(relayOpt.id);
+                                            return (
+                                              <button
+                                                key={relayOpt.id}
+                                                type="button"
+                                                onClick={() => {
+                                                  const current = instance.relays || [];
+                                                  const next = current.includes(relayOpt.id)
+                                                    ? current.filter(r => r !== relayOpt.id)
+                                                    : [...current, relayOpt.id];
+                                                  handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { relays: next });
+                                                }}
+                                                className={`rounded px-2 py-1 text-[11px] font-bold border transition-all ${
+                                                  isSelected
+                                                    ? 'bg-amber-500 text-white border-amber-500'
+                                                    : 'bg-white text-slate-500 border-slate-300 hover:bg-slate-50'
+                                                }`}
+                                              >
+                                                {relayOpt.label}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
                                       ) : (
-                                        <div className="flex items-center rounded-md border border-dashed border-slate-200 bg-slate-100 p-2 text-xs italic text-slate-400">
+                                        <div className="flex items-center rounded-md border border-dashed border-slate-200 bg-slate-100 p-2 text-xs italic text-slate-400 md:col-span-2">
                                           Usa el relé propio del dispositivo
                                         </div>
                                       )}
-                                      {instance.relaySource === 'controller' && instance.relay === 'OTRO' ? (
-                                        <input
-                                          type="text"
-                                          value={instance.relayNote}
-                                          onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { relayNote: event.target.value })}
-                                          placeholder="Detalle (ej. Moxa canal 3)"
-                                          className="rounded-md border border-slate-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-blue-500"
-                                        />
-                                      ) : (
-                                        <input
-                                          type="text"
-                                          value={instance.relayPin}
-                                          onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { relayPin: event.target.value })}
-                                          placeholder="Pin/GPIO (opcional)"
-                                          disabled={instance.relaySource !== 'controller'}
-                                          className="rounded-md border border-slate-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                        />
-                                      )}
+
                                       <input
                                         type="number"
                                         min="0"
                                         value={instance.actionSeconds}
                                         onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { actionSeconds: event.target.value })}
-                                        placeholder="Segundos de apertura"
+                                        placeholder="Segundos apertura"
                                         className="rounded-md border border-slate-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-blue-500"
                                       />
                                     </div>
+
+                                    {instance.relaySource === 'controller' && (instance.relays || []).includes('OTRO') && (
+                                      <div className="mt-1.5">
+                                        <input
+                                          type="text"
+                                          value={instance.relayNote}
+                                          onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { relayNote: event.target.value })}
+                                          placeholder="Detalle del relé Otro (ej. Moxa canal 3)"
+                                          className="w-full rounded-md border border-amber-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-amber-400"
+                                        />
+                                      </div>
+                                    )}
+
+                                    {CAMERA_CAPABLE_TYPES.includes(peripheral.type) && (
+                                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, {
+                                            cameraEnabled: !instance.cameraEnabled,
+                                            ...(!instance.cameraEnabled ? {} : { cameraIp: '' }),
+                                          })}
+                                          className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-bold transition-all ${
+                                            instance.cameraEnabled
+                                              ? 'border-purple-400 bg-purple-50 text-purple-700'
+                                              : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                                          }`}
+                                        >
+                                          <Camera className="h-3.5 w-3.5" />
+                                          {instance.cameraEnabled ? 'Cámara IP activa' : '+ Cámara IP asociada'}
+                                        </button>
+                                        {instance.cameraEnabled && (
+                                          <input
+                                            type="text"
+                                            value={instance.cameraIp}
+                                            onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { cameraIp: event.target.value })}
+                                            placeholder="IP de la cámara (ej. 10.20.20.100)"
+                                            className="flex-1 rounded-md border border-purple-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400"
+                                          />
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {CARD_READER_CAPABLE_TYPES.includes(peripheral.type) && (
+                                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, {
+                                            cardReaderEnabled: !instance.cardReaderEnabled,
+                                          })}
+                                          className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-bold transition-all ${
+                                            instance.cardReaderEnabled
+                                              ? 'border-teal-400 bg-teal-50 text-teal-700'
+                                              : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                                          }`}
+                                        >
+                                          <CreditCard className="h-3.5 w-3.5" />
+                                          {instance.cardReaderEnabled ? 'Lector de carnet activo' : '+ Lector de carnet externo'}
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -829,27 +936,68 @@ export default function CommunityForm({
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => setRules(prev => ({ ...prev, antipassback: !prev.antipassback }))}
-              className={`flex items-start gap-3 rounded-xl border-2 p-4 text-left transition-colors ${
-                rules.antipassback
-                  ? 'border-blue-500 bg-blue-50/50'
-                  : 'border-slate-200 bg-white hover:border-slate-300'
-              }`}
-            >
-              <div className={`mt-0.5 ${rules.antipassback ? 'text-blue-600' : 'text-slate-400'}`}>
-                {rules.antipassback ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
-              </div>
-              <div>
-                <h4 className={`text-sm font-bold ${rules.antipassback ? 'text-blue-900' : 'text-slate-700'}`}>
-                  Anti-Passback
-                </h4>
-                <p className="mt-1 text-xs text-slate-500">
-                  Inyecta pruebas de doble entrada/salida en periféricos de acceso.
-                </p>
-              </div>
-            </button>
+            <div className={`rounded-xl border-2 p-4 transition-colors ${
+              rules.antipassback
+                ? 'border-blue-500 bg-blue-50/50'
+                : 'border-slate-200 bg-white hover:border-slate-300'
+            }`}>
+              <button
+                type="button"
+                onClick={() => setRules(prev => ({ ...prev, antipassback: !prev.antipassback }))}
+                className="flex w-full items-start gap-3 text-left"
+              >
+                <div className={`mt-0.5 ${rules.antipassback ? 'text-blue-600' : 'text-slate-400'}`}>
+                  {rules.antipassback ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+                </div>
+                <div>
+                  <h4 className={`text-sm font-bold ${rules.antipassback ? 'text-blue-900' : 'text-slate-700'}`}>
+                    Anti-Passback
+                  </h4>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Agrega pruebas de doble entrada/salida a las puertas seleccionadas.
+                  </p>
+                </div>
+              </button>
+
+              {rules.antipassback && (() => {
+                const allDoors = nodes.flatMap(node =>
+                  (node.doors || []).map(door => ({ door, nodeLabel: node.label }))
+                );
+                return (
+                  <div className="mt-3 border-t border-blue-100 pt-3">
+                    <label className="mb-2 block text-xs font-bold text-blue-800">
+                      Seleccionar puertas con Anti-Passback:
+                    </label>
+                    {allDoors.length === 0 ? (
+                      <p className="text-xs italic text-slate-400">Agrega puertas a los controladores primero.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {allDoors.map(({ door, nodeLabel }) => {
+                          const isSelected = (rules.antipassbackDoorIds || []).includes(door.id);
+                          return (
+                            <button
+                              key={door.id}
+                              type="button"
+                              onClick={() => handleToggleAntipassbackDoor(door.id)}
+                              className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-all ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-600 ring-offset-1'
+                                  : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              {door.name || 'Sin nombre'}
+                              <span className={`font-normal ${isSelected ? 'opacity-70' : 'text-slate-400'}`}>
+                                ({nodeLabel})
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
 
             <div className={`rounded-xl border-2 p-4 transition-colors ${
               rules.multivalidation
@@ -902,6 +1050,70 @@ export default function CommunityForm({
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className={`rounded-xl border-2 p-4 transition-colors ${
+              rules.cancelInvitation
+                ? 'border-blue-500 bg-blue-50/50'
+                : 'border-slate-200 bg-white hover:border-slate-300'
+            }`}>
+              <button
+                type="button"
+                onClick={() => setRules(prev => ({ ...prev, cancelInvitation: !prev.cancelInvitation }))}
+                className="flex w-full items-start gap-3 text-left"
+              >
+                <div className={`mt-0.5 ${rules.cancelInvitation ? 'text-blue-600' : 'text-slate-400'}`}>
+                  {rules.cancelInvitation ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+                </div>
+                <div>
+                  <h4 className={`flex items-center gap-1.5 text-sm font-bold ${rules.cancelInvitation ? 'text-blue-900' : 'text-slate-700'}`}>
+                    <Ban className="h-4 w-4" />
+                    Cancelar Invitación
+                  </h4>
+                  <p className="mt-1 text-xs text-slate-500">
+                    La visita/invitación/carnet se invalida tras el primer ingreso en las puertas seleccionadas. La salida siempre queda permitida.
+                  </p>
+                </div>
+              </button>
+
+              {rules.cancelInvitation && (() => {
+                const allDoors = nodes.flatMap(node =>
+                  (node.doors || []).map(door => ({ door, nodeLabel: node.label }))
+                );
+                return (
+                  <div className="mt-3 border-t border-blue-100 pt-3">
+                    <label className="mb-2 block text-xs font-bold text-blue-800">
+                      Seleccionar puertas con Cancelar Invitación:
+                    </label>
+                    {allDoors.length === 0 ? (
+                      <p className="text-xs italic text-slate-400">Agrega puertas a los controladores primero.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {allDoors.map(({ door, nodeLabel }) => {
+                          const isSelected = (rules.cancelInvitationDoorIds || []).includes(door.id);
+                          return (
+                            <button
+                              key={door.id}
+                              type="button"
+                              onClick={() => handleToggleCancelInvitationDoor(door.id)}
+                              className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-all ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-600 ring-offset-1'
+                                  : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              {door.name || 'Sin nombre'}
+                              <span className={`font-normal ${isSelected ? 'opacity-70' : 'text-slate-400'}`}>
+                                ({nodeLabel})
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

@@ -1,9 +1,18 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Building, CheckCircle2, Download, FileText, RotateCcw, Settings2, Upload, Wrench } from 'lucide-react';
 import { getFinalStatusClasses } from '../utils/report.js';
+import { filterChecklistByPhases, getAvailableDeviceTypes, getPhaseProgress } from '../utils/checklistFilters.js';
+import { PROCESS_SCOPE } from '../constants/observationScopes.js';
 import PhaseSection from './PhaseSection.jsx';
 import ApprovalPanel from './ApprovalPanel.jsx';
+import ChecklistFilters from './ChecklistFilters.jsx';
+import GeneralObservations from './GeneralObservations.jsx';
+import DeliveryDecision from './DeliveryDecision.jsx';
 import TechnicalSheetModal from './TechnicalSheetModal.jsx';
+
+function toggleFilterValue(values, value) {
+  return values.includes(value) ? values.filter(item => item !== value) : [...values, value];
+}
 
 function SummaryPill({ label, value, className }) {
   return (
@@ -33,8 +42,64 @@ export default function Dashboard({
   onImportJson,
   importStripResults,
   onToggleImportStripResults,
+  generalObservations,
+  onAddGeneralObservation,
+  onUpdateGeneralObservation,
+  onDeleteGeneralObservation,
+  deliveryException,
+  onSetDeliveryException,
+  onClearDeliveryException,
 }) {
   const [showTechnicalSheet, setShowTechnicalSheet] = useState(false);
+  const [statusFilter, setStatusFilter] = useState([]);
+  const [phaseFilter, setPhaseFilter] = useState([]);
+  const [deviceTypeFilter, setDeviceTypeFilter] = useState([]);
+
+  useEffect(() => {
+    setStatusFilter([]);
+    setPhaseFilter([]);
+    setDeviceTypeFilter([]);
+  }, [selectedCommunity.id]);
+
+  const phaseOptions = useMemo(
+    () => getPhaseProgress(checklistByPhases, taskResults),
+    [checklistByPhases, taskResults]
+  );
+
+  const deviceTypeOptions = useMemo(
+    () => getAvailableDeviceTypes(checklistByPhases, taskResults),
+    [checklistByPhases, taskResults]
+  );
+
+  const observationScopeOptions = useMemo(
+    () => [...deviceTypeOptions, PROCESS_SCOPE],
+    [deviceTypeOptions]
+  );
+
+  const filteredPhases = useMemo(
+    () => filterChecklistByPhases(checklistByPhases, taskResults, {
+      statuses: statusFilter,
+      phaseNumbers: phaseFilter,
+      deviceTypes: deviceTypeFilter,
+    }),
+    [checklistByPhases, taskResults, statusFilter, phaseFilter, deviceTypeFilter]
+  );
+
+  const hasActiveFilters = statusFilter.length > 0 || phaseFilter.length > 0 || deviceTypeFilter.length > 0;
+
+  const visibleTaskCount = useMemo(
+    () => filteredPhases.reduce(
+      (total, phase) => total + phase.devices.reduce((sum, device) => sum + device.tasks.length, 0),
+      0
+    ),
+    [filteredPhases]
+  );
+
+  const handleClearFilters = () => {
+    setStatusFilter([]);
+    setPhaseFilter([]);
+    setDeviceTypeFilter([]);
+  };
 
   return (
     <div>
@@ -56,6 +121,11 @@ export default function Dashboard({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className={`rounded-xl border px-4 py-2.5 text-center text-sm font-black ${getFinalStatusClasses(finalLabStatus)}`}>
               {finalLabStatus}
+              {deliveryException?.active && (
+                <div className="mt-0.5 text-[10px] font-black uppercase tracking-wide text-orange-600">
+                  Entregado bajo excepción
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 shadow-inner">
@@ -111,6 +181,13 @@ export default function Dashboard({
           taskResults={taskResults}
           summary={summary}
           finalLabStatus={finalLabStatus}
+        />
+
+        <DeliveryDecision
+          finalLabStatus={finalLabStatus}
+          deliveryException={deliveryException}
+          onSetException={onSetDeliveryException}
+          onClearException={onClearDeliveryException}
         />
 
         <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
@@ -176,13 +253,42 @@ export default function Dashboard({
         </div>
       </section>
 
+      <GeneralObservations
+        observations={generalObservations}
+        deviceTypeOptions={observationScopeOptions}
+        onAdd={onAddGeneralObservation}
+        onUpdate={onUpdateGeneralObservation}
+        onDelete={onDeleteGeneralObservation}
+      />
+
+      {checklistByPhases.length > 0 && (
+        <ChecklistFilters
+          selectedStatuses={statusFilter}
+          onToggleStatus={statusKey => setStatusFilter(prev => toggleFilterValue(prev, statusKey))}
+          phaseOptions={phaseOptions}
+          selectedPhases={phaseFilter}
+          onTogglePhase={phaseNumber => setPhaseFilter(prev => toggleFilterValue(prev, phaseNumber))}
+          deviceTypeOptions={deviceTypeOptions}
+          selectedDeviceTypes={deviceTypeFilter}
+          onToggleDeviceType={typeId => setDeviceTypeFilter(prev => toggleFilterValue(prev, typeId))}
+          onClearFilters={handleClearFilters}
+          hasActiveFilters={hasActiveFilters}
+          visibleCount={visibleTaskCount}
+          totalCount={summary.total}
+        />
+      )}
+
       <div className="space-y-12">
         {checklistByPhases.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white py-10 text-center text-slate-500">
             Esta comunidad no tiene controladores configurados.
           </div>
+        ) : filteredPhases.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white py-10 text-center text-slate-500">
+            Ningún dispositivo/prueba coincide con los filtros seleccionados.
+          </div>
         ) : (
-          checklistByPhases.map(phase => (
+          filteredPhases.map(phase => (
             <PhaseSection
               key={phase.phaseNumber}
               phase={phase}

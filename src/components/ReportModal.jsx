@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Activity,
+  AlertOctagon,
   AlertTriangle,
   ArrowRight,
   CalendarDays,
@@ -11,11 +12,13 @@ import {
   MapPin,
   Network,
   Server,
+  ShieldAlert,
   Wrench,
   X,
   Zap,
 } from 'lucide-react';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
+import { resolveObservationScopeLabel } from '../constants/observationScopes.js';
 import { TEST_STATUS } from '../constants/testStatus.js';
 import {
   getApprovalSummaryText,
@@ -82,6 +85,11 @@ function getPeripheralInstanceLabels(peripheral) {
   });
 }
 
+function getObservationScopeLabels(scope) {
+  if (!scope || scope.length === 0) return ['General'];
+  return scope.map(id => resolveObservationScopeLabel(id, DEVICE_CATALOG));
+}
+
 function getModuleNames(selectedCommunity) {
   const moduleIds = Array.isArray(selectedCommunity.modules) ? selectedCommunity.modules : [];
 
@@ -125,6 +133,8 @@ export default function ReportModal({
   taskResults,
   summary,
   finalLabStatus,
+  generalObservations = [],
+  deliveryException = null,
   onClose,
 }) {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
@@ -158,6 +168,8 @@ export default function ReportModal({
         summary,
         finalLabStatus,
         reportMode,
+        generalObservations,
+        deliveryException,
       });
     } catch (error) {
       console.error('Error generating PDF report:', error);
@@ -204,11 +216,30 @@ export default function ReportModal({
                     Estado final
                   </div>
                   <div className="text-xl font-black">{finalLabStatus}</div>
+                  {deliveryException?.active && (
+                    <div className="mt-1 text-[10px] font-black uppercase tracking-wide text-orange-600">
+                      Entregado bajo excepción
+                    </div>
+                  )}
                 </div>
               </div>
             </header>
 
             <main className="bg-slate-50 p-6 md:p-8">
+              {deliveryException?.active && (
+                <div className="pdf-avoid-break mb-6 rounded-xl border border-orange-300 bg-orange-50 p-4 text-sm text-orange-900">
+                  <div className="mb-1 flex items-center gap-2 font-black uppercase tracking-wide text-orange-800">
+                    <ShieldAlert className="h-4 w-4" />
+                    Entregado bajo excepción
+                  </div>
+                  <p className="font-semibold">Autorizado por: {deliveryException.authorizedBy}</p>
+                  <p className="mt-1 whitespace-pre-wrap">Motivo: {deliveryException.reason}</p>
+                  <p className="mt-2 text-xs font-medium text-orange-700">
+                    El estado técnico ({finalLabStatus}) no se modifica: esta nota deja constancia de que se entregó igual, a pesar de pruebas pendientes/fallidas.
+                  </p>
+                </div>
+              )}
+
               {hasInvalidFailures && (
                 <div className="pdf-avoid-break mb-6 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm font-semibold text-yellow-800">
                   Hay pruebas en Fail o Blocked sin observación técnica. El reporte puede revisarse, pero no debería cerrarse hasta completar esos comentarios.
@@ -267,6 +298,31 @@ export default function ReportModal({
                   ))}
                 </div>
               </section>
+
+              {generalObservations.length > 0 && (
+                <section className="pdf-avoid-break mb-8">
+                  <h3 className="mb-4 flex items-center gap-2 border-b-2 border-purple-200 pb-2 text-lg font-black text-slate-800">
+                    <AlertOctagon className="h-5 w-5 text-purple-500" />
+                    Observaciones Generales (para mejora)
+                  </h3>
+
+                  <div className="space-y-3">
+                    {generalObservations.map((observation, index) => (
+                      <article key={observation.id || index} className="pdf-avoid-break rounded-r-xl border-l-4 border-purple-500 bg-white p-4 shadow-sm">
+                        <div className="mb-2 flex flex-wrap gap-1.5">
+                          {getObservationScopeLabels(observation.scope).map(label => (
+                            <span key={label} className="inline-block rounded-full border border-purple-200 bg-purple-100 px-2.5 py-0.5 text-[11px] font-black text-purple-700">
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                        <h4 className="mb-1 text-sm font-black text-slate-800">{observation.title}</h4>
+                        <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{observation.description}</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               <section className="mb-8">
                 <h3 className="pdf-avoid-break mb-4 flex items-center gap-2 border-b-2 border-slate-200 pb-2 text-lg font-black text-slate-800">
@@ -498,6 +554,18 @@ export default function ReportModal({
                           Multivalidación no requerida
                         </li>
                       )}
+
+                      {selectedCommunity.rules?.cancelInvitation ? (
+                        <li className="flex items-start gap-2 text-sm font-bold text-slate-800">
+                          <CheckCircle2 className="h-5 w-5 shrink-0 text-green-500" />
+                          Cancelar Invitación habilitado
+                        </li>
+                      ) : (
+                        <li className="flex items-start gap-2 text-sm font-medium text-slate-400">
+                          <Circle className="h-5 w-5 shrink-0" />
+                          Cancelar Invitación no requerido
+                        </li>
+                      )}
                     </ul>
                   </div>
                 </div>
@@ -568,7 +636,6 @@ export default function ReportModal({
                                         <span className="flex items-center gap-1.5 font-bold text-amber-700">
                                           <Zap className="h-3.5 w-3.5 text-amber-500" />
                                           {device.relayLabel || 'Sin relé configurado'}
-                                          {device.relayPin && <span className="text-slate-400">(pin {device.relayPin})</span>}
                                           {device.actionSeconds && <span className="text-slate-500">· {device.actionSeconds}s</span>}
                                         </span>
                                       </div>

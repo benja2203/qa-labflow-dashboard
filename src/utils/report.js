@@ -1,24 +1,22 @@
 import { DEFAULT_TASK_RESULT } from '../constants/testStatus.js';
-import { getDirectionLabel, getPortLabel, getRelayLabel, getRelaySourceLabel } from '../constants/accessConfig.js';
+import { getDirectionLabel, getPortLabel, getRelaysLabel, getRelaySourceLabel } from '../constants/accessConfig.js';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
 
 function getRelayDisplay(instance) {
   const isDeviceRelay = instance.relaySource === 'device';
+  const relays = Array.isArray(instance.relays)
+    ? instance.relays
+    : (instance.relay ? [instance.relay] : []);
 
   const relayLabel = isDeviceRelay
     ? 'Relé integrado del dispositivo'
-    : instance.relay === 'OTRO'
-      ? (instance.relayNote || 'Relé externo')
-      : instance.relay
-        ? getRelayLabel(instance.relay)
-        : '';
+    : getRelaysLabel(relays, instance.relayNote);
 
   return {
     source: instance.relaySource || 'controller',
     sourceLabel: getRelaySourceLabel(instance.relaySource || 'controller'),
-    relay: instance.relay || '',
+    relays,
     relayLabel,
-    relayPin: instance.relayPin || '',
     actionSeconds: instance.actionSeconds || '',
   };
 }
@@ -167,6 +165,8 @@ export function getTechnicalDeviceReport(selectedCommunity) {
           port: instance.port || '',
           portLabel: getPortLabel(instance.port, instance.portNote),
           ip: instance.ip || '',
+          cameraEnabled: instance.cameraEnabled ?? false,
+          cameraIp: instance.cameraIp || '',
           ...getRelayDisplay(instance),
         };
 
@@ -250,6 +250,8 @@ export function buildReportPayload({
   taskResults,
   summary,
   finalLabStatus,
+  generalObservations = [],
+  deliveryException = null,
 }) {
   const currentTaskIds = new Set(getChecklistTaskIds(checklistByPhases));
   const filteredTaskResults = Object.fromEntries(
@@ -263,6 +265,8 @@ export function buildReportPayload({
     summary,
     checklistByPhases,
     taskResults: filteredTaskResults,
+    generalObservations,
+    deliveryException,
     issues: getReportIssues(checklistByPhases, taskResults),
     fullChecklistResults: getFullReportTasks(checklistByPhases, taskResults),
   };

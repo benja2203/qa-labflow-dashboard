@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowDownToLine, ArrowRight, Download, MapPin, Server, Wrench, X, Zap } from 'lucide-react';
+import { ArrowDownToLine, ArrowRight, Camera, Download, MapPin, Server, Wrench, X, Zap } from 'lucide-react';
 import { getTechnicalDeviceReport } from '../utils/report.js';
 
 function DeviceRow({ device }) {
@@ -19,14 +19,19 @@ function DeviceRow({ device }) {
         <div className="flex items-center gap-1.5 font-bold text-amber-700">
           <Zap className="h-3.5 w-3.5 text-amber-500" />
           {device.relayLabel || 'Sin relé configurado'}
-          {device.relayPin && <span className="text-slate-400">(pin {device.relayPin})</span>}
           {device.actionSeconds && <span className="text-slate-500">· {device.actionSeconds}s</span>}
         </div>
       </div>
       <div className="mt-1.5 flex flex-wrap gap-3 text-slate-500">
         {device.portLabel && <span><span className="font-bold text-slate-700">Puerto:</span> {device.portLabel}</span>}
         {device.ip && <span><span className="font-bold text-slate-700">IP:</span> {device.ip}</span>}
-        {!device.portLabel && !device.ip && <span className="italic text-slate-400">Sin puerto/IP registrado</span>}
+        {device.cameraEnabled && (
+          <span className="flex items-center gap-1 font-bold text-purple-600">
+            <Camera className="h-3 w-3" />
+            {device.cameraIp ? `Cám: ${device.cameraIp}` : 'Cámara IP'}
+          </span>
+        )}
+        {!device.portLabel && !device.ip && !device.cameraEnabled && <span className="italic text-slate-400">Sin puerto/IP registrado</span>}
       </div>
     </div>
   );

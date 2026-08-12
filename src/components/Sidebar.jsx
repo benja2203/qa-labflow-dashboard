@@ -1,5 +1,5 @@
 import React from 'react';
-import { Building, ChevronRight, Network, Plus, Trash2 } from 'lucide-react';
+import { BarChart3, Building, ChevronRight, Network, Plus, Trash2, Upload } from 'lucide-react';
 
 export default function Sidebar({
   communities,
@@ -8,6 +8,8 @@ export default function Sidebar({
   onSelectCommunity,
   onCreateCommunity,
   onDeleteCommunity,
+  onImportJson,
+  onShowGeneralReport,
 }) {
   return (
     <aside className="sticky top-0 z-10 flex h-auto w-full flex-col border-r border-slate-200 bg-white shadow-sm md:h-screen md:w-72">
@@ -24,6 +26,30 @@ export default function Sidebar({
         >
           <Plus className="h-4 w-4" />
           Nueva Comunidad
+        </button>
+
+        <button
+          type="button"
+          onClick={onImportJson}
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+        >
+          <Upload className="h-4 w-4" />
+          Importar JSON
+        </button>
+      </div>
+
+      <div className="border-b border-slate-100 p-4">
+        <button
+          type="button"
+          onClick={onShowGeneralReport}
+          className={`flex w-full items-center gap-2 rounded-lg p-2.5 text-sm font-medium transition-colors ${
+            view === 'generalReport'
+              ? 'bg-blue-50 text-blue-700'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <BarChart3 className="h-4 w-4" />
+          Reporte General
         </button>
       </div>
 

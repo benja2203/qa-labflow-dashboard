@@ -54,6 +54,13 @@ export function getRelayLabel(relayId) {
   return RELAY_OPTIONS.find(relay => relay.id === relayId)?.label || relayId || '';
 }
 
+export function getRelaysLabel(relays, relayNote) {
+  if (!Array.isArray(relays) || relays.length === 0) return '';
+  return relays
+    .map(r => r === 'OTRO' ? (relayNote?.trim() || 'Relé externo') : getRelayLabel(r))
+    .join(', ');
+}
+
 export function getRelaySourceLabel(sourceId) {
   return RELAY_SOURCES.find(source => source.id === sourceId)?.label || '';
 }
@@ -79,8 +86,13 @@ export const DEFAULT_INSTANCE_LINK = {
   portNote: '',
   ip: '',
   relaySource: 'controller',
-  relay: '',
+  relays: [],
   relayNote: '',
-  relayPin: '',
   actionSeconds: '',
+  cameraEnabled: false,
+  cameraIp: '',
+  cardReaderEnabled: false,
 };
+
+export const CAMERA_CAPABLE_TYPES = ['qr', 'stickertag'];
+export const CARD_READER_CAPABLE_TYPES = ['guardDesk'];

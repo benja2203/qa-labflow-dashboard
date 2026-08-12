@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
 import { TEST_STATUS } from '../constants/testStatus.js';
+import { resolveObservationScopeLabel } from '../constants/observationScopes.js';
 import {
   getApprovalSummaryText,
   getFullReportTasks,
@@ -30,6 +31,10 @@ const COLORS = {
   red50: [254, 242, 242],
   yellow600: [202, 138, 4],
   yellow50: [254, 252, 232],
+  purple600: [147, 51, 234],
+  purple50: [250, 245, 255],
+  orange600: [234, 88, 12],
+  orange50: [255, 247, 237],
   white: [255, 255, 255],
 };
 
@@ -360,7 +365,7 @@ function createPdfWriter(doc) {
 
         doc.setFont('helvetica', 'bold');
         setTextColor(doc, COLORS.yellow600);
-        const relayText = `${device.relayLabel || 'Sin rele'}${device.relayPin ? ` (pin ${device.relayPin})` : ''}${device.actionSeconds ? ` - ${device.actionSeconds}s` : ''}`;
+        const relayText = `${device.relayLabel || 'Sin rele'}${device.actionSeconds ? ` - ${device.actionSeconds}s` : ''}`;
         doc.text(cleanText(relayText), PAGE.width - PAGE.margin - 3, rowY, { align: 'right' });
 
         rowY += 4.5;
@@ -475,6 +480,11 @@ function getModuleNames(selectedCommunity) {
     .filter(Boolean);
 }
 
+function getObservationScopeLabels(scope) {
+  if (!scope || scope.length === 0) return ['General'];
+  return scope.map(id => resolveObservationScopeLabel(id, DEVICE_CATALOG));
+}
+
 function getDeviceCoverageRows(fullChecklistResults) {
   return fullChecklistResults.flatMap(phase => (
     phase.devices.map(device => {
@@ -511,6 +521,8 @@ export function downloadStructuredPdfReport({
   summary,
   finalLabStatus,
   reportMode = 'compact',
+  generalObservations = [],
+  deliveryException = null,
 }) {
   const doc = new jsPDF({
     unit: 'mm',
@@ -550,7 +562,7 @@ export function downloadStructuredPdfReport({
   doc.setFontSize(8.5);
   setTextColor(doc, COLORS.slate300);
   doc.text(
-    `Generado: ${generatedAt.toLocaleString('es-CL')} | Estado final: ${finalLabStatus} | Tipo: ${reportModeLabel}`,
+    `Generado: ${generatedAt.toLocaleString('es-CL')} | Estado final: ${finalLabStatus}${deliveryException?.active ? ' (entregado bajo excepcion)' : ''} | Tipo: ${reportModeLabel}`,
     PAGE.margin,
     35
   );
@@ -560,6 +572,17 @@ export function downloadStructuredPdfReport({
   }
 
   writer.setY(headerHeight + 8);
+
+  if (deliveryException?.active) {
+    writer.addSectionTitle('Entregado bajo excepción');
+    writer.addParagraph(
+      `El estado técnico (${finalLabStatus}) no se modifica: esta nota deja constancia de que se entregó igual, a pesar de pruebas pendientes/fallidas.`,
+      { color: COLORS.orange600, fontStyle: 'bold' }
+    );
+    writer.addLabelValue('Autorizado por', deliveryException.authorizedBy);
+    writer.addLabelValue('Motivo', deliveryException.reason);
+    writer.addGap(4);
+  }
 
   if (hasInvalidFailures) {
     writer.addSectionTitle('Advertencia');
@@ -597,14 +620,32 @@ export function downloadStructuredPdfReport({
     { value: String(summary.pending), label: 'Pending', color: COLORS.slate700, fill: COLORS.slate100 },
   ]);
 
-  writer.addLabelValue('Estado final', finalLabStatus, {
-    fontSize: 10,
-    fontStyle: 'bold',
-    color: finalLabStatus === 'APTO' ? COLORS.green600 : finalLabStatus === 'NO APTO' ? COLORS.red600 : COLORS.slate700,
-  });
+  writer.addLabelValue(
+    'Estado final',
+    `${finalLabStatus}${deliveryException?.active ? ' (entregado bajo excepcion)' : ''}`,
+    {
+      fontSize: 10,
+      fontStyle: 'bold',
+      color: finalLabStatus === 'APTO' ? COLORS.green600 : finalLabStatus === 'NO APTO' ? COLORS.red600 : COLORS.slate700,
+    }
+  );
 
   writer.addSectionTitle('Módulo de aprobación');
   writer.addParagraph(getApprovalSummaryText(summary, finalLabStatus), { fontStyle: 'bold' });
+
+  if (generalObservations.length > 0) {
+    writer.addSectionTitle('Observaciones generales (para mejora)');
+    generalObservations.forEach((observation, index) => {
+      writer.ensurePage(20);
+      writer.addParagraph(`${index + 1}. ${observation.title}`, {
+        fontStyle: 'bold',
+        color: COLORS.purple600,
+      });
+      writer.addLabelValue('Alcance', getObservationScopeLabels(observation.scope).join(', '));
+      writer.addLabelValue('Detalle', observation.description);
+      writer.addGap(3);
+    });
+  }
 
   writer.addSectionTitle('Observaciones, fallas y evidencia relevante');
   if (!issues.length) {
@@ -764,6 +805,136 @@ export function downloadTechnicalSheetPdf({ selectedCommunity }) {
     writer.addSectionTitle('Dispositivos sin puerta asignada');
     unassignedDevices.forEach(device => writer.addUnassignedDeviceRow(device));
   }
+
+  writer.addFooterPages();
+  doc.save(filename);
+}
+
+export function downloadGeneralReportPdf({ report }) {
+  const doc = new jsPDF({
+    unit: 'mm',
+    format: 'a4',
+    orientation: 'portrait',
+    compress: true,
+  });
+
+  const writer = createPdfWriter(doc);
+  const generatedAt = new Date();
+  const today = new Date().toISOString().slice(0, 10);
+  const filename = `QA-LabFlow-reporte-general-${today}.pdf`;
+  const headerHeight = 42;
+
+  setFillColor(doc, COLORS.slate800);
+  doc.rect(0, 0, PAGE.width, headerHeight, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  setTextColor(doc, COLORS.white);
+  doc.text('QA LabFlow - Reporte General', PAGE.margin, 17);
+
+  doc.setFontSize(11);
+  doc.text(
+    cleanText(`${report.communitiesCount} comunidades - ${report.totals.total} pruebas evaluadas`),
+    PAGE.margin,
+    27
+  );
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  setTextColor(doc, COLORS.slate300);
+  doc.text(`Generado: ${generatedAt.toLocaleString('es-CL')}`, PAGE.margin, 35);
+
+  writer.setY(headerHeight + 8);
+
+  writer.addSectionTitle('Resumen general');
+  writer.addMetricRow([
+    { value: String(report.communitiesCount), label: 'Comunidades' },
+    { value: String(report.totals.total), label: 'Pruebas totales' },
+    { value: String(report.totals.fail), label: 'Fail', color: COLORS.red600, fill: COLORS.red50 },
+    { value: String(report.totals.blocked), label: 'Blocked', color: COLORS.yellow600, fill: COLORS.yellow50 },
+  ]);
+
+  writer.addSectionTitle('Estado final por comunidad');
+  writer.addMetricRow(
+    Object.entries(report.statusDistribution).map(([status, count]) => ({
+      value: String(count),
+      label: status,
+    }))
+  );
+  if (report.deliveredUnderExceptionCount > 0) {
+    writer.addParagraph(
+      `${report.deliveredUnderExceptionCount} comunidad(es) se entregaron bajo excepción.`,
+      { color: COLORS.orange600, fontStyle: 'bold' }
+    );
+    writer.addGap(2);
+  }
+
+  writer.addSectionTitle('Defectos por tipo de dispositivo/prueba');
+  if (report.deviceBreakdown.length === 0) {
+    writer.addParagraph('Sin datos todavía.');
+  } else {
+    report.deviceBreakdown.forEach(device => {
+      writer.ensurePage(14);
+      writer.addParagraph(`${device.label} - ${device.total} pruebas`, {
+        fontStyle: 'bold',
+        color: COLORS.slate900,
+      });
+      writer.addParagraph(
+        `Fail: ${device.fail || 0}  |  Blocked: ${device.blocked || 0}  |  ${device.failRate}% con falla`,
+        { fontSize: 8.5, color: COLORS.slate500 }
+      );
+      writer.addGap(2);
+    });
+  }
+
+  writer.addSectionTitle('Pruebas que más se repiten como Fail/Blocked');
+  if (report.topFailingTests.length === 0) {
+    writer.addParagraph('Sin fallas ni bloqueos registrados todavía.');
+  } else {
+    report.topFailingTests.forEach((item, index) => {
+      writer.ensurePage(14);
+      writer.addParagraph(`${index + 1}. ${item.description}`, {
+        fontStyle: 'bold',
+        fontSize: 9,
+        color: COLORS.slate900,
+      });
+      writer.addParagraph(
+        `${item.count} ${item.count === 1 ? 'vez' : 'veces'} (Fail: ${item.fail}, Blocked: ${item.blocked})`,
+        { fontSize: 8, color: COLORS.slate500 }
+      );
+      writer.addGap(2);
+    });
+  }
+
+  if (report.generalObservations.length > 0) {
+    writer.addSectionTitle('Observaciones generales consolidadas');
+    report.generalObservations.forEach((observation, index) => {
+      writer.ensurePage(20);
+      writer.addParagraph(`${index + 1}. [${observation.communityName}] ${observation.title}`, {
+        fontStyle: 'bold',
+        color: COLORS.purple600,
+      });
+      writer.addParagraph(`Alcance: ${getObservationScopeLabels(observation.scope).join(', ')}`, {
+        fontSize: 7.5,
+        color: COLORS.slate500,
+      });
+      writer.addParagraph(observation.description, { fontSize: 8.5 });
+      writer.addGap(3);
+    });
+  }
+
+  writer.addSectionTitle('Detalle por comunidad');
+  report.communitySummaries.forEach(entry => {
+    writer.ensurePage(14);
+    writer.addParagraph(
+      `${entry.name} - ${entry.finalLabStatus}${entry.deliveredUnderException ? ' (entregado bajo excepcion)' : ''}`,
+      { fontStyle: 'bold', color: COLORS.slate900 }
+    );
+    writer.addParagraph(
+      `${entry.summary.completed}/${entry.summary.total} evaluadas - Pass ${entry.summary.pass}, Fail ${entry.summary.fail}, Blocked ${entry.summary.blocked}, N/A ${entry.summary.na}, Pending ${entry.summary.pending}`,
+      { fontSize: 8, color: COLORS.slate500 }
+    );
+    writer.addGap(2);
+  });
 
   writer.addFooterPages();
   doc.save(filename);
