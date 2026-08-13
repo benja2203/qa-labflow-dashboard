@@ -177,6 +177,12 @@ export function hasChecklistFailuresWithoutComment(checklistByPhases, taskResult
   ));
 }
 
+// Estos dispositivos no se instalan en una puerta puntual ni usan un relé
+// fijo (Desk/PDA operan sobre cualquier puerta de la comunidad, con el relé
+// de la puerta que corresponda en cada caso), así que no aplican a la ficha
+// técnica de puertas/relés y se excluyen para no mostrarlos como "sin asignar".
+const DOOR_RELAY_EXEMPT_TYPES = ['guardDesk', 'guardPda'];
+
 export function getTechnicalDeviceReport(selectedCommunity) {
   const unassignedDevices = [];
 
@@ -191,36 +197,38 @@ export function getTechnicalDeviceReport(selectedCommunity) {
 
     const doorsById = Object.fromEntries(doors.map(door => [door.id, door]));
 
-    (node.peripherals || []).forEach(peripheral => {
-      const typeName = DEVICE_CATALOG[peripheral.type]?.name || peripheral.type;
+    (node.peripherals || [])
+      .filter(peripheral => !DOOR_RELAY_EXEMPT_TYPES.includes(peripheral.type))
+      .forEach(peripheral => {
+        const typeName = DEVICE_CATALOG[peripheral.type]?.name || peripheral.type;
 
-      (peripheral.instances || []).forEach((instance, index) => {
-        const deviceRow = {
-          type: peripheral.type,
-          typeName,
-          label: instance.label?.trim() || `${typeName} #${index + 1}`,
-          direction: instance.direction || '',
-          directionLabel: getDirectionLabel(instance.direction),
-          port: instance.port || '',
-          portLabel: getPortLabel(instance.port, instance.portNote),
-          ip: instance.ip || '',
-          cameraEnabled: instance.cameraEnabled ?? false,
-          cameraIp: instance.cameraIp || '',
-          ...getRelayDisplay(instance),
-        };
+        (peripheral.instances || []).forEach((instance, index) => {
+          const deviceRow = {
+            type: peripheral.type,
+            typeName,
+            label: instance.label?.trim() || `${typeName} #${index + 1}`,
+            direction: instance.direction || '',
+            directionLabel: getDirectionLabel(instance.direction),
+            port: instance.port || '',
+            portLabel: getPortLabel(instance.port, instance.portNote),
+            ip: instance.ip || '',
+            cameraEnabled: instance.cameraEnabled ?? false,
+            cameraIp: instance.cameraIp || '',
+            ...getRelayDisplay(instance),
+          };
 
-        const door = instance.doorId ? doorsById[instance.doorId] : null;
+          const door = instance.doorId ? doorsById[instance.doorId] : null;
 
-        if (door) {
-          door.devices.push(deviceRow);
-        } else {
-          unassignedDevices.push({
-            ...deviceRow,
-            controllerLabel: node.label,
-          });
-        }
+          if (door) {
+            door.devices.push(deviceRow);
+          } else {
+            unassignedDevices.push({
+              ...deviceRow,
+              controllerLabel: node.label,
+            });
+          }
+        });
       });
-    });
 
     return {
       nodeId: node.id,
