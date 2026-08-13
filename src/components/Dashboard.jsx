@@ -35,7 +35,9 @@ export default function Dashboard({
   handleCommentChange,
   handleEvidenceChange,
   toggleDeviceAllTasks,
-  setDeviceTasksStatus,
+  deviceNotes,
+  onSetDeviceNote,
+  onClearDeviceNote,
   onShowReport,
   onResetChecklist,
   onExportJson,
@@ -353,7 +355,9 @@ export default function Dashboard({
               handleCommentChange={handleCommentChange}
               handleEvidenceChange={handleEvidenceChange}
               toggleDeviceAllTasks={toggleDeviceAllTasks}
-              setDeviceTasksStatus={setDeviceTasksStatus}
+              deviceNotes={deviceNotes}
+              onSetDeviceNote={onSetDeviceNote}
+              onClearDeviceNote={onClearDeviceNote}
               readOnly={isClosed}
             />
           ))

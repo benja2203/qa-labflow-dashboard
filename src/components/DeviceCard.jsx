@@ -1,102 +1,103 @@
 import React, { useState } from 'react';
-import { Camera, CheckCircle2, ChevronDown, CreditCard } from 'lucide-react';
+import { Camera, CheckCircle2, CreditCard, Pencil, Trash2 } from 'lucide-react';
 import TaskRow from './TaskRow.jsx';
 import { TEST_STATUS } from '../constants/testStatus.js';
 
 const BULK_STATUS_OPTIONS = ['fail', 'blocked', 'na'];
 const STATUSES_REQUIRING_COMMENT = ['fail', 'blocked'];
 
-function BulkStatusMenu({ tasks, readOnly, onApply }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [pendingStatus, setPendingStatus] = useState(null);
-  const [comment, setComment] = useState('');
+function DeviceNoteEditor({ initialStatus, initialComment, onCancel, onSave }) {
+  const [status, setStatus] = useState(initialStatus || 'blocked');
+  const [comment, setComment] = useState(initialComment || '');
 
-  const close = () => {
-    setIsOpen(false);
-    setPendingStatus(null);
-    setComment('');
-  };
-
-  const handlePickStatus = statusKey => {
-    if (STATUSES_REQUIRING_COMMENT.includes(statusKey)) {
-      setPendingStatus(statusKey);
-      return;
-    }
-    onApply(tasks, statusKey, '');
-    close();
-  };
-
-  const handleApplyWithComment = () => {
-    if (!comment.trim()) return;
-    onApply(tasks, pendingStatus, comment.trim());
-    close();
-  };
+  const requiresComment = STATUSES_REQUIRING_COMMENT.includes(status);
+  const canSave = !requiresComment || comment.trim().length > 0;
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        disabled={readOnly}
-        onClick={() => setIsOpen(prev => !prev)}
-        className={`flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-black text-slate-500 transition-all hover:bg-slate-50 ${
-          readOnly ? 'cursor-not-allowed opacity-60' : ''
-        }`}
-        title="Marcar todas las pruebas de este dispositivo con otro estado"
-      >
-        Marcar como…
-        <ChevronDown className="h-3.5 w-3.5" />
-      </button>
+    <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">
+        Marcar todas las pruebas de este dispositivo como…
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {BULK_STATUS_OPTIONS.map(statusKey => (
+          <button
+            key={statusKey}
+            type="button"
+            onClick={() => setStatus(statusKey)}
+            className={`rounded-full border px-2.5 py-1 text-[11px] font-black transition-all ${
+              status === statusKey
+                ? TEST_STATUS[statusKey].badge
+                : 'border-slate-200 bg-white text-slate-400 hover:bg-slate-50'
+            }`}
+          >
+            {TEST_STATUS[statusKey].shortLabel}
+          </button>
+        ))}
+      </div>
+      <textarea
+        autoFocus
+        value={comment}
+        onChange={event => setComment(event.target.value)}
+        placeholder="Ej: Se reemplazó el equipo por falla y se retiró antes de completar las pruebas del nuevo."
+        className="h-16 w-full resize-none rounded-md border border-slate-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/50"
+      />
+      <div className="flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-md px-2.5 py-1 text-[11px] font-black text-slate-500 hover:bg-slate-100"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          disabled={!canSave}
+          onClick={() => onSave(status, comment.trim())}
+          className="rounded-md bg-slate-800 px-2.5 py-1 text-[11px] font-black text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Aplicar a todas
+        </button>
+      </div>
+    </div>
+  );
+}
 
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={close} />
-          <div className="absolute right-0 top-full z-20 mt-1.5 w-64 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
-            {!pendingStatus ? (
-              <div className="flex flex-col gap-1">
-                {BULK_STATUS_OPTIONS.map(statusKey => (
-                  <button
-                    key={statusKey}
-                    type="button"
-                    onClick={() => handlePickStatus(statusKey)}
-                    className={`rounded-md px-2.5 py-1.5 text-left text-xs font-black transition-colors hover:opacity-80 ${TEST_STATUS[statusKey].badge}`}
-                  >
-                    Marcar todas como {TEST_STATUS[statusKey].shortLabel}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="px-1 text-[11px] font-black uppercase tracking-wide text-slate-500">
-                  Observación para las {tasks.length} pruebas ({TEST_STATUS[pendingStatus].shortLabel})
-                </p>
-                <textarea
-                  autoFocus
-                  value={comment}
-                  onChange={event => setComment(event.target.value)}
-                  placeholder="Ej: Se reemplazó el equipo por falla y se retiró antes de completar las pruebas del nuevo."
-                  className="h-20 w-full resize-none rounded-md border border-slate-200 p-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/50"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPendingStatus(null)}
-                    className="rounded-md px-2 py-1 text-[11px] font-black text-slate-500 hover:bg-slate-100"
-                  >
-                    Atrás
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleApplyWithComment}
-                    disabled={!comment.trim()}
-                    className="rounded-md bg-slate-800 px-2.5 py-1 text-[11px] font-black text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Aplicar a todas
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </>
+function DeviceNoteBanner({ deviceNote, taskCount, readOnly, onEdit, onClear }) {
+  const statusConfig = TEST_STATUS[deviceNote.status] || TEST_STATUS.pending;
+
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/60 p-3">
+      <div className="flex items-start gap-2">
+        <span className={`mt-0.5 inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-black ${statusConfig.badge}`}>
+          {statusConfig.shortLabel}
+        </span>
+        <div>
+          <p className="text-xs font-bold text-slate-700">
+            Nota de dispositivo — aplica a {taskCount} {taskCount === 1 ? 'prueba' : 'pruebas'}
+          </p>
+          <p className="mt-0.5 whitespace-pre-wrap text-xs leading-5 text-slate-600">{deviceNote.comment}</p>
+        </div>
+      </div>
+
+      {!readOnly && (
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={onEdit}
+            title="Editar nota del dispositivo"
+            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={onClear}
+            title="Quitar nota del dispositivo"
+            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
     </div>
   );
@@ -111,13 +112,21 @@ export default function DeviceCard({
   handleCommentChange,
   handleEvidenceChange,
   toggleDeviceAllTasks,
-  setDeviceTasksStatus,
+  deviceNote,
+  onSetDeviceNote,
+  onClearDeviceNote,
   readOnly,
 }) {
+  const [isEditingNote, setIsEditingNote] = useState(false);
+
   const totalTasks = device.tasks.length;
   const passTasks = device.tasks.filter(task => getTaskResult(task.id).status === 'pass').length;
   const naTasks = device.tasks.filter(task => getTaskResult(task.id).status === 'na').length;
   const isComplete = totalTasks > 0 && totalTasks === passTasks + naTasks;
+
+  const coveredTaskCount = deviceNote
+    ? device.tasks.filter(task => getTaskResult(task.id).status === deviceNote.status).length
+    : 0;
 
   const titleParts = device.deviceName.includes('[Conectado a:')
     ? {
@@ -125,6 +134,11 @@ export default function DeviceCard({
         connection: device.deviceName.match(/\[(.*?)\]/)?.[1],
       }
     : null;
+
+  const handleSaveNote = (status, comment) => {
+    onSetDeviceNote(device.id, device.tasks, status, comment);
+    setIsEditingNote(false);
+  };
 
   return (
     <article className={`rounded-xl border bg-white shadow-sm transition-all duration-300 ${
@@ -185,7 +199,7 @@ export default function DeviceCard({
           <button
             type="button"
             disabled={readOnly}
-            onClick={() => toggleDeviceAllTasks(device.tasks, isComplete)}
+            onClick={() => toggleDeviceAllTasks(device.id, device.tasks, isComplete)}
             className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black transition-all active:scale-95 ${
               isComplete
                 ? 'bg-green-100 text-green-700 hover:bg-green-200'
@@ -197,9 +211,42 @@ export default function DeviceCard({
             {isComplete ? 'COMPLETADO' : 'Marcar Pass'}
           </button>
 
-          <BulkStatusMenu tasks={device.tasks} readOnly={readOnly} onApply={setDeviceTasksStatus} />
+          {!deviceNote && !isEditingNote && (
+            <button
+              type="button"
+              disabled={readOnly}
+              onClick={() => setIsEditingNote(true)}
+              className={`flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-black text-slate-500 transition-all hover:bg-slate-50 ${
+                readOnly ? 'cursor-not-allowed opacity-60' : ''
+              }`}
+              title="Marcar todas las pruebas de este dispositivo con otro estado"
+            >
+              Marcar como…
+            </button>
+          )}
         </div>
       </header>
+
+      {deviceNote && !isEditingNote && (
+        <DeviceNoteBanner
+          deviceNote={deviceNote}
+          taskCount={coveredTaskCount}
+          readOnly={readOnly}
+          onEdit={() => setIsEditingNote(true)}
+          onClear={() => onClearDeviceNote(device.id)}
+        />
+      )}
+
+      {isEditingNote && !readOnly && (
+        <div className="border-b border-slate-100 p-3">
+          <DeviceNoteEditor
+            initialStatus={deviceNote?.status}
+            initialComment={deviceNote?.comment}
+            onCancel={() => setIsEditingNote(false)}
+            onSave={handleSaveNote}
+          />
+        </div>
+      )}
 
       <div className="p-1.5">
         {device.tasks.map(task => (

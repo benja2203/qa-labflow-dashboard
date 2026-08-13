@@ -136,16 +136,17 @@ export default function ReportModal({
   generalObservations = [],
   deliveryException = null,
   closedProject = null,
+  deviceNotes = {},
   onClose,
 }) {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [reportMode, setReportMode] = useState('compact');
 
-  const issues = getReportIssues(checklistByPhases, taskResults);
+  const issues = getReportIssues(checklistByPhases, taskResults, deviceNotes);
   const fullChecklistResults = getFullReportTasks(checklistByPhases, taskResults);
   const coverageRows = getDeviceCoverageRows(fullChecklistResults);
   const technicalReport = getTechnicalDeviceReport(selectedCommunity);
-  const hasInvalidFailures = hasChecklistFailuresWithoutComment(checklistByPhases, taskResults);
+  const hasInvalidFailures = hasChecklistFailuresWithoutComment(checklistByPhases, taskResults, deviceNotes);
   const generatedAt = new Date();
   const enabledModules = getModuleNames(selectedCommunity);
   const peripheralsCount = selectedCommunity.nodes?.reduce((acc, node) => {
@@ -172,6 +173,7 @@ export default function ReportModal({
         generalObservations,
         deliveryException,
         closedProject,
+        deviceNotes,
       });
     } catch (error) {
       console.error('Error generating PDF report:', error);
@@ -352,13 +354,26 @@ export default function ReportModal({
                 ) : (
                   <div className="space-y-3">
                     {issues.map((issue, index) => (
-                      <article key={`${issue.deviceName}-${issue.taskDescription}-${index}`} className="pdf-avoid-break rounded-r-xl border-l-4 border-red-500 bg-white p-4 shadow-sm">
-                        <div className="mb-1 text-xs font-bold uppercase tracking-wider text-red-800">
+                      <article
+                        key={`${issue.deviceName}-${issue.taskDescription || 'device-note'}-${index}`}
+                        className={`pdf-avoid-break rounded-r-xl border-l-4 bg-white p-4 shadow-sm ${
+                          issue.isDeviceNote ? 'border-slate-500' : 'border-red-500'
+                        }`}
+                      >
+                        <div className={`mb-1 text-xs font-bold uppercase tracking-wider ${
+                          issue.isDeviceNote ? 'text-slate-600' : 'text-red-800'
+                        }`}>
                           {issue.phaseName} / {issue.deviceName}
                         </div>
-                        <div className="mb-2 text-sm font-medium text-slate-700">
-                          Prueba: <span className="font-normal italic">{issue.taskDescription}</span>
-                        </div>
+                        {issue.isDeviceNote ? (
+                          <div className="mb-2 text-sm font-medium text-slate-700">
+                            Nota de dispositivo — aplica a {issue.taskCount} {issue.taskCount === 1 ? 'prueba' : 'pruebas'}
+                          </div>
+                        ) : (
+                          <div className="mb-2 text-sm font-medium text-slate-700">
+                            Prueba: <span className="font-normal italic">{issue.taskDescription}</span>
+                          </div>
+                        )}
                         <div className="mb-3">
                           <StatusBadge status={issue.status} />
                         </div>

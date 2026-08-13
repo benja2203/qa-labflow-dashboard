@@ -9,6 +9,7 @@ import { buildChecklistByPhases, hydrateSnapshotIcons, stripIconsForSnapshot } f
 import {
   buildReportPayload,
   createChecklistSummary,
+  getChecklistDeviceIds,
   getChecklistTaskIds,
   getFinalLabStatus,
   getTaskResult as readTaskResult,
@@ -187,7 +188,11 @@ function parseImportedPayload(rawText) {
     ? parsed.closedProject
     : null;
 
-  return { community, taskResults, generalObservations, deliveryException, closedProject };
+  const deviceNotes = parsed.deviceNotes && typeof parsed.deviceNotes === 'object'
+    ? parsed.deviceNotes
+    : {};
+
+  return { community, taskResults, generalObservations, deliveryException, closedProject, deviceNotes };
 }
 
 // El snapshot de un proyecto cerrado guarda los taskId con el prefijo
@@ -213,7 +218,25 @@ function remapClosedProjectIds(closedProject, oldId, newId) {
     taskResults: Object.fromEntries(
       Object.entries(closedProject.taskResults || {}).map(([taskId, result]) => [remapId(taskId), result])
     ),
+    deviceNotes: Object.fromEntries(
+      Object.entries(closedProject.deviceNotes || {}).map(([deviceId, note]) => [remapId(deviceId), note])
+    ),
   };
+}
+
+// Reescribe las claves de un mapa `{ id: valor }` cuyos ids empiezan con el
+// prefijo `community-{oldId}-...` al nuevo id de comunidad. Se usa tanto para
+// taskResults como para deviceNotes al importar con un id reasignado.
+function remapIdKeyedMap(map, oldId, newId) {
+  const oldPrefix = `community-${oldId}-`;
+  const newPrefix = `community-${newId}-`;
+
+  return Object.fromEntries(
+    Object.entries(map || {}).map(([key, value]) => [
+      key.startsWith(oldPrefix) ? newPrefix + key.slice(oldPrefix.length) : key,
+      value,
+    ])
+  );
 }
 
 function downloadJson(filename, payload) {
@@ -249,6 +272,7 @@ export default function App() {
   const [generalObservations, setGeneralObservations] = useLocalStorageState('qa-labflow-general-observations', {});
   const [deliveryExceptions, setDeliveryExceptions] = useLocalStorageState('qa-labflow-delivery-exceptions', {});
   const [closedProjects, setClosedProjects] = useLocalStorageState('qa-labflow-closed-projects', {});
+  const [deviceNotes, setDeviceNotes] = useLocalStorageState('qa-labflow-device-notes', {});
 
   const [commentBoxes, setCommentBoxes] = useState({});
   const [showReport, setShowReport] = useState(false);
@@ -288,6 +312,7 @@ export default function App() {
   ), [isCommunityClosed, currentClosedProject, liveChecklistByPhases]);
 
   const effectiveTaskResults = isCommunityClosed ? (currentClosedProject.taskResults || {}) : taskResults;
+  const effectiveDeviceNotes = isCommunityClosed ? (currentClosedProject.deviceNotes || {}) : deviceNotes;
 
   const summary = useMemo(() => {
     return createChecklistSummary(checklistByPhases, effectiveTaskResults);
@@ -338,7 +363,7 @@ export default function App() {
     }));
   };
 
-  const toggleDeviceAllTasks = (tasks, isComplete) => {
+  const toggleDeviceAllTasks = (deviceId, tasks, isComplete) => {
     if (isCommunityClosed) return;
 
     setTaskResults(prev => {
@@ -356,9 +381,13 @@ export default function App() {
 
       return nextState;
     });
+
+    // Otra acción en bloque sobre las mismas pruebas: la nota de dispositivo
+    // anterior (si había) ya no aplica.
+    clearDeviceNote(deviceId);
   };
 
-  const setDeviceTasksStatus = (tasks, status, comment) => {
+  const setDeviceNote = (deviceId, tasks, status, comment) => {
     if (isCommunityClosed) return;
 
     setTaskResults(prev => {
@@ -369,12 +398,31 @@ export default function App() {
           ...DEFAULT_TASK_RESULT,
           ...(nextState[task.id] || {}),
           status,
-          ...(comment ? { comment } : {}),
           updatedAt: new Date().toISOString(),
         };
       });
 
       return nextState;
+    });
+
+    setDeviceNotes(prev => ({
+      ...prev,
+      [deviceId]: {
+        status,
+        comment,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+  };
+
+  const clearDeviceNote = deviceId => {
+    if (isCommunityClosed) return;
+
+    setDeviceNotes(prev => {
+      if (!prev[deviceId]) return prev;
+      const next = { ...prev };
+      delete next[deviceId];
+      return next;
     });
   };
 
@@ -463,6 +511,11 @@ export default function App() {
       Object.entries(taskResults).filter(([taskId]) => currentTaskIds.has(taskId))
     );
 
+    const currentDeviceIds = new Set(getChecklistDeviceIds(liveChecklistByPhases));
+    const deviceNotesSnapshot = Object.fromEntries(
+      Object.entries(deviceNotes).filter(([deviceId]) => currentDeviceIds.has(deviceId))
+    );
+
     setClosedProjects(prev => ({
       ...prev,
       [selectedCommunity.id]: {
@@ -470,6 +523,7 @@ export default function App() {
         closedAt: new Date().toISOString(),
         checklistByPhases: stripIconsForSnapshot(liveChecklistByPhases),
         taskResults: taskResultsSnapshot,
+        deviceNotes: deviceNotesSnapshot,
       },
     }));
   };
@@ -565,6 +619,10 @@ export default function App() {
       Object.entries(prev).filter(([taskId]) => !taskId.startsWith(`community-${communityId}-`))
     ));
 
+    setDeviceNotes(prev => Object.fromEntries(
+      Object.entries(prev).filter(([deviceId]) => !deviceId.startsWith(`community-${communityId}-`))
+    ));
+
     setGeneralObservations(prev => {
       const next = { ...prev };
       delete next[communityId];
@@ -594,9 +652,14 @@ export default function App() {
     if (!confirmed) return;
 
     const taskIds = new Set(getChecklistTaskIds(checklistByPhases));
+    const deviceIds = new Set(getChecklistDeviceIds(checklistByPhases));
 
     setTaskResults(prev => Object.fromEntries(
       Object.entries(prev).filter(([taskId]) => !taskIds.has(taskId))
+    ));
+
+    setDeviceNotes(prev => Object.fromEntries(
+      Object.entries(prev).filter(([deviceId]) => !deviceIds.has(deviceId))
     ));
 
     setCommentBoxes({});
@@ -615,6 +678,7 @@ export default function App() {
       generalObservations: currentGeneralObservations,
       deliveryException: currentDeliveryException,
       closedProject: currentClosedProject,
+      deviceNotes: effectiveDeviceNotes,
     });
 
     const filename = `qa-labflow-${sanitizeFilename(selectedCommunity.name)}-${new Date().toISOString().slice(0, 10)}.json`;
@@ -640,11 +704,13 @@ export default function App() {
         generalObservations: parsedObservations,
         deliveryException: parsedDeliveryException,
         closedProject: parsedClosedProject,
+        deviceNotes: parsedDeviceNotes,
       } = parseImportedPayload(reader.result);
       const importedResults = importStripResults ? {} : parsedResults;
       const importedObservations = importStripResults ? [] : parsedObservations;
       const importedDeliveryException = importStripResults ? null : parsedDeliveryException;
       const importedClosedProject = importStripResults ? null : parsedClosedProject;
+      const importedDeviceNotes = importStripResults ? {} : parsedDeviceNotes;
       const importedCommunity = normalizeCommunity(community);
 
       // Conserva el id original; si choca con uno existente, genera uno nuevo
@@ -671,9 +737,13 @@ export default function App() {
       const remappedClosedProject = finalId !== importedCommunity.id
         ? remapClosedProjectIds(importedClosedProject, importedCommunity.id, finalId)
         : importedClosedProject;
+      const remappedDeviceNotes = finalId !== importedCommunity.id
+        ? remapIdKeyedMap(importedDeviceNotes, importedCommunity.id, finalId)
+        : importedDeviceNotes;
 
       setCommunities(prev => [...prev, communityToAdd]);
       setTaskResults(prev => ({ ...prev, ...remappedResults }));
+      setDeviceNotes(prev => ({ ...prev, ...remappedDeviceNotes }));
       setGeneralObservations(prev => ({ ...prev, [finalId]: importedObservations }));
       if (importedDeliveryException) {
         setDeliveryExceptions(prev => ({ ...prev, [finalId]: importedDeliveryException }));
@@ -703,7 +773,7 @@ export default function App() {
 };
 
   const handleShowReport = () => {
-    if (hasChecklistFailuresWithoutComment(checklistByPhases, effectiveTaskResults)) {
+    if (hasChecklistFailuresWithoutComment(checklistByPhases, effectiveTaskResults, effectiveDeviceNotes)) {
       window.alert('Hay pruebas en Fail o Blocked sin observación técnica. Puedes revisar el reporte, pero completa esos comentarios antes de cerrarlo formalmente.');
     }
 
@@ -768,7 +838,9 @@ export default function App() {
               handleCommentChange={handleCommentChange}
               handleEvidenceChange={handleEvidenceChange}
               toggleDeviceAllTasks={toggleDeviceAllTasks}
-              setDeviceTasksStatus={setDeviceTasksStatus}
+              deviceNotes={effectiveDeviceNotes}
+              onSetDeviceNote={setDeviceNote}
+              onClearDeviceNote={clearDeviceNote}
               onShowReport={handleShowReport}
               onResetChecklist={handleResetCurrentChecklist}
               onExportJson={handleExportCurrentJson}
@@ -810,6 +882,7 @@ export default function App() {
           generalObservations={currentGeneralObservations}
           deliveryException={currentDeliveryException}
           closedProject={currentClosedProject}
+          deviceNotes={effectiveDeviceNotes}
           onClose={() => setShowReport(false)}
         />
       )}

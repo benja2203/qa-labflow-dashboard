@@ -31,6 +31,17 @@ export function getChecklistTaskIds(checklistByPhases) {
   ));
 }
 
+export function getChecklistDeviceIds(checklistByPhases) {
+  return checklistByPhases.flatMap(phase => phase.devices.map(device => device.id));
+}
+
+// Una prueba puntual se considera "explicada" por la nota del dispositivo
+// solo si su estado actual coincide con el de la nota (si alguien la cambió
+// a un estado distinto, esa desviación necesita su propia observación).
+export function isTaskCoveredByDeviceNote(deviceNote, taskStatus) {
+  return Boolean(deviceNote?.comment?.trim()) && deviceNote.status === taskStatus;
+}
+
 export function createChecklistSummary(checklistByPhases, taskResults) {
   const summary = {
     total: 0,
@@ -83,18 +94,40 @@ export function getFinalStatusClasses(finalLabStatus) {
   return statusMap[finalLabStatus] || statusMap['EN PROGRESO'];
 }
 
-export function getReportIssues(checklistByPhases, taskResults) {
+export function getReportIssues(checklistByPhases, taskResults, deviceNotes = {}) {
   const issues = [];
 
   checklistByPhases.forEach(phase => {
     phase.devices.forEach(device => {
+      const deviceNote = deviceNotes[device.id];
+
+      if (deviceNote?.comment?.trim()) {
+        const coveredTaskCount = device.tasks.filter(task => (
+          getTaskResult(taskResults, task.id).status === deviceNote.status
+        )).length;
+
+        if (coveredTaskCount > 0) {
+          issues.push({
+            isDeviceNote: true,
+            phaseName: phase.phaseName,
+            deviceName: device.deviceName,
+            status: deviceNote.status,
+            comment: deviceNote.comment,
+            evidence: '',
+            taskCount: coveredTaskCount,
+            updatedAt: deviceNote.updatedAt,
+          });
+        }
+      }
+
       device.tasks.forEach(task => {
         const result = getTaskResult(taskResults, task.id);
         const hasComment = result.comment?.trim().length > 0;
         const hasEvidence = result.evidence?.trim().length > 0;
         const isIssue = ['fail', 'blocked'].includes(result.status);
+        const coveredByDeviceNote = !hasComment && !hasEvidence && isTaskCoveredByDeviceNote(deviceNote, result.status);
 
-        if (isIssue || hasComment || hasEvidence) {
+        if ((isIssue || hasComment || hasEvidence) && !coveredByDeviceNote) {
           issues.push({
             phaseName: phase.phaseName,
             deviceName: device.deviceName,
@@ -125,17 +158,23 @@ export function getFullReportTasks(checklistByPhases, taskResults) {
   }));
 }
 
-export function hasChecklistFailuresWithoutComment(checklistByPhases, taskResults) {
-  const currentTaskIds = new Set(getChecklistTaskIds(checklistByPhases));
+export function hasChecklistFailuresWithoutComment(checklistByPhases, taskResults, deviceNotes = {}) {
+  return checklistByPhases.some(phase => (
+    phase.devices.some(device => {
+      const deviceNote = deviceNotes[device.id];
 
-  return Object.entries(taskResults).some(([taskId, result]) => {
-    if (!currentTaskIds.has(taskId)) return false;
+      return device.tasks.some(task => {
+        const result = getTaskResult(taskResults, task.id);
+        const requiresComment = result.status === 'fail' || result.status === 'blocked';
+        if (!requiresComment) return false;
 
-    const requiresComment = result.status === 'fail' || result.status === 'blocked';
-    const hasNoComment = !result.comment || result.comment.trim().length === 0;
+        const hasOwnComment = result.comment?.trim().length > 0;
+        if (hasOwnComment) return false;
 
-    return requiresComment && hasNoComment;
-  });
+        return !isTaskCoveredByDeviceNote(deviceNote, result.status);
+      });
+    })
+  ));
 }
 
 export function getTechnicalDeviceReport(selectedCommunity) {
@@ -253,10 +292,16 @@ export function buildReportPayload({
   generalObservations = [],
   deliveryException = null,
   closedProject = null,
+  deviceNotes = {},
 }) {
   const currentTaskIds = new Set(getChecklistTaskIds(checklistByPhases));
   const filteredTaskResults = Object.fromEntries(
     Object.entries(taskResults).filter(([taskId]) => currentTaskIds.has(taskId))
+  );
+
+  const currentDeviceIds = new Set(getChecklistDeviceIds(checklistByPhases));
+  const filteredDeviceNotes = Object.fromEntries(
+    Object.entries(deviceNotes).filter(([deviceId]) => currentDeviceIds.has(deviceId))
   );
 
   return {
@@ -269,7 +314,8 @@ export function buildReportPayload({
     generalObservations,
     deliveryException,
     closedProject,
-    issues: getReportIssues(checklistByPhases, taskResults),
+    deviceNotes: filteredDeviceNotes,
+    issues: getReportIssues(checklistByPhases, taskResults, deviceNotes),
     fullChecklistResults: getFullReportTasks(checklistByPhases, taskResults),
   };
 }

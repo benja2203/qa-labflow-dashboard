@@ -524,6 +524,7 @@ export function downloadStructuredPdfReport({
   generalObservations = [],
   deliveryException = null,
   closedProject = null,
+  deviceNotes = {},
 }) {
   const doc = new jsPDF({
     unit: 'mm',
@@ -534,10 +535,10 @@ export function downloadStructuredPdfReport({
 
   const writer = createPdfWriter(doc);
   const generatedAt = new Date();
-  const issues = getReportIssues(checklistByPhases, taskResults);
+  const issues = getReportIssues(checklistByPhases, taskResults, deviceNotes);
   const fullChecklistResults = getFullReportTasks(checklistByPhases, taskResults);
   const coverageRows = getDeviceCoverageRows(fullChecklistResults);
-  const hasInvalidFailures = hasChecklistFailuresWithoutComment(checklistByPhases, taskResults);
+  const hasInvalidFailures = hasChecklistFailuresWithoutComment(checklistByPhases, taskResults, deviceNotes);
   const today = new Date().toISOString().slice(0, 10);
   const isFullReport = reportMode === 'full';
   const reportModeLabel = isFullReport ? 'completo' : 'compacto';
@@ -656,12 +657,18 @@ export function downloadStructuredPdfReport({
       writer.ensurePage(18);
       writer.addParagraph(`${index + 1}. ${issue.phaseName} / ${issue.deviceName}`, {
         fontStyle: 'bold',
-        color: COLORS.slate900,
+        color: issue.isDeviceNote ? COLORS.slate700 : COLORS.slate900,
       });
-      writer.addLabelValue('Prueba', issue.taskDescription);
+      if (issue.isDeviceNote) {
+        writer.addLabelValue('Nota de dispositivo', `Aplica a ${issue.taskCount} prueba(s)`);
+      } else {
+        writer.addLabelValue('Prueba', issue.taskDescription);
+      }
       writer.addLabelValue('Estado', getStatusLabel(issue.status));
       writer.addLabelValue('Observación', issue.comment, { emptyText: 'Sin observación' });
-      writer.addLabelValue('Evidencia', issue.evidence, { emptyText: 'Sin evidencia' });
+      if (!issue.isDeviceNote) {
+        writer.addLabelValue('Evidencia', issue.evidence, { emptyText: 'Sin evidencia' });
+      }
       writer.addGap(3);
     });
   }
