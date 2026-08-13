@@ -557,17 +557,14 @@ export function downloadStructuredPdfReport({
     selectedCommunity.technicianName ? `Configurado por: ${selectedCommunity.technicianName}` : null,
     selectedCommunity.installerName ? `Instalado por: ${selectedCommunity.installerName}` : null,
   ].filter(Boolean);
-  const headerHeight = responsibleParts.length > 0 ? 48 : 42;
+  const headerHeight = responsibleParts.length > 0 ? 42 : 36;
 
   setFillColor(doc, COLORS.slate800);
   doc.rect(0, 0, PAGE.width, headerHeight, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(18);
   setTextColor(doc, COLORS.white);
-  doc.text('QA LabFlow - Reporte de Validación', PAGE.margin, 17);
-
-  doc.setFontSize(12);
-  doc.text(cleanText(selectedCommunity.name), PAGE.margin, 27);
+  doc.text(cleanText(selectedCommunity.name), PAGE.margin, 20);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
@@ -575,21 +572,17 @@ export function downloadStructuredPdfReport({
   doc.text(
     `Generado: ${generatedAt.toLocaleString('es-CL')} | Estado final: ${finalLabStatus}${deliveryException?.active ? ' (entregado bajo excepcion)' : ''}${closedProject?.closed ? ' (proyecto cerrado)' : ''} | Tipo: ${reportModeLabel}`,
     PAGE.margin,
-    35
+    29
   );
 
   if (responsibleParts.length > 0) {
-    doc.text(cleanText(responsibleParts.join(' | ')), PAGE.margin, 41);
+    doc.text(cleanText(responsibleParts.join(' | ')), PAGE.margin, 35);
   }
 
   writer.setY(headerHeight + 8);
 
   if (deliveryException?.active) {
     writer.addSectionTitle('Entregado bajo excepción');
-    writer.addParagraph(
-      `El estado técnico (${finalLabStatus}) no se modifica: esta nota deja constancia de que se entregó igual, a pesar de pruebas pendientes/fallidas.`,
-      { color: COLORS.orange600, fontStyle: 'bold' }
-    );
     writer.addLabelValue('Autorizado por', deliveryException.authorizedBy);
     writer.addLabelValue('Motivo', deliveryException.reason);
     writer.addGap(4);
@@ -667,7 +660,7 @@ export function downloadStructuredPdfReport({
       writer.ensurePage(18);
       writer.addParagraph(`${index + 1}. ${issue.phaseName} / ${issue.deviceName}`, {
         fontStyle: 'bold',
-        color: issue.isDeviceNote ? COLORS.slate700 : COLORS.slate900,
+        color: (STATUS_COLORS[issue.status] || STATUS_COLORS.pending).text,
       });
       if (issue.isDeviceNote) {
         writer.addLabelValue('Nota de dispositivo', `Aplica a ${issue.taskCount} prueba(s)`);

@@ -43,6 +43,12 @@ function getStatusConfig(status) {
   return TEST_STATUS[status] || TEST_STATUS.pending;
 }
 
+function getIssueAccentClasses(status) {
+  if (status === 'fail') return { border: 'border-red-500', text: 'text-red-800' };
+  if (status === 'blocked') return { border: 'border-amber-500', text: 'text-amber-800' };
+  return { border: 'border-slate-400', text: 'text-slate-600' };
+}
+
 function formatUpdatedAt(value) {
   if (!value) return 'Sin actualización';
 
@@ -192,10 +198,6 @@ export default function ReportModal({
             <header className="pdf-avoid-break bg-slate-800 p-6 text-white md:p-8">
               <div className="flex items-start justify-between gap-6">
                 <div>
-                  <div className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-blue-300">
-                    <Activity className="h-4 w-4" />
-                    QA LabFlow - Reporte de Validación
-                  </div>
                   <h2 className="text-3xl font-black">{selectedCommunity.name}</h2>
                   <div className="mt-3 flex flex-wrap items-center gap-4 text-sm font-medium text-slate-300">
                     <span className="flex items-center gap-1">
@@ -228,7 +230,7 @@ export default function ReportModal({
                   )}
                   {closedProject?.closed && (
                     <div className="mt-1 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                      🔒 Proyecto cerrado
+                      Proyecto cerrado
                     </div>
                   )}
                 </div>
@@ -244,9 +246,6 @@ export default function ReportModal({
                   </div>
                   <p className="font-semibold">Autorizado por: {deliveryException.authorizedBy}</p>
                   <p className="mt-1 whitespace-pre-wrap">Motivo: {deliveryException.reason}</p>
-                  <p className="mt-2 text-xs font-medium text-orange-700">
-                    El estado técnico ({finalLabStatus}) no se modifica: esta nota deja constancia de que se entregó igual, a pesar de pruebas pendientes/fallidas.
-                  </p>
                 </div>
               )}
 
@@ -352,16 +351,14 @@ export default function ReportModal({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {issues.map((issue, index) => (
+                    {issues.map((issue, index) => {
+                      const accent = getIssueAccentClasses(issue.status);
+                      return (
                       <article
                         key={`${issue.deviceName}-${issue.taskDescription || 'device-note'}-${index}`}
-                        className={`pdf-avoid-break rounded-r-xl border-l-4 bg-white p-4 shadow-sm ${
-                          issue.isDeviceNote ? 'border-slate-500' : 'border-red-500'
-                        }`}
+                        className={`pdf-avoid-break rounded-r-xl border-l-4 bg-white p-4 shadow-sm ${accent.border}`}
                       >
-                        <div className={`mb-1 text-xs font-bold uppercase tracking-wider ${
-                          issue.isDeviceNote ? 'text-slate-600' : 'text-red-800'
-                        }`}>
+                        <div className={`mb-1 text-xs font-bold uppercase tracking-wider ${accent.text}`}>
                           {issue.phaseName} / {issue.deviceName}
                         </div>
                         {issue.isDeviceNote ? (
@@ -389,7 +386,8 @@ export default function ReportModal({
                           </div>
                         )}
                       </article>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </section>
