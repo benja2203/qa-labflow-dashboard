@@ -4,6 +4,7 @@ import { buildGeneralReport } from '../utils/generalReport.js';
 import { getFinalStatusClasses } from '../utils/report.js';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
 import { resolveObservationScopeLabel } from '../constants/observationScopes.js';
+import { OBSERVATION_STATUS, resolveObservationStatus } from '../constants/observationStatus.js';
 
 function getScopeLabels(scope) {
   if (!scope || scope.length === 0) return ['General'];
@@ -193,7 +194,7 @@ export default function GeneralReportView({
               Observaciones Generales consolidadas
             </h3>
             <span className="text-xs font-bold text-purple-700">
-              {report.pendingObservationsCount} pendientes · {report.resolvedObservationsCount} resueltas
+              {report.pendingObservationsCount} pendientes · {report.inReviewObservationsCount} en revisión · {report.resolvedObservationsCount} resueltas
             </span>
           </div>
           <div className="space-y-2">
@@ -203,11 +204,9 @@ export default function GeneralReportView({
                   <p className="text-xs font-black uppercase tracking-wide text-purple-600">{observation.communityName}</p>
                   <div className="flex flex-wrap gap-1">
                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${
-                      observation.resolved
-                        ? 'border-green-300 bg-green-50 text-green-700'
-                        : 'border-amber-300 bg-amber-50 text-amber-700'
+                      OBSERVATION_STATUS[resolveObservationStatus(observation)].badge
                     }`}>
-                      {observation.resolved ? 'Resuelta' : 'Pendiente'}
+                      {OBSERVATION_STATUS[resolveObservationStatus(observation)].label}
                     </span>
                     {getScopeLabels(observation.scope).map(label => (
                       <span key={label} className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-black text-purple-700">

@@ -434,7 +434,7 @@ export default function App() {
       title,
       description,
       scope,
-      resolved: false,
+      status: 'pending',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

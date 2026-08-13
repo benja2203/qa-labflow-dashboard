@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
 import { TEST_STATUS } from '../constants/testStatus.js';
 import { resolveObservationScopeLabel } from '../constants/observationScopes.js';
+import { OBSERVATION_STATUS, resolveObservationStatus } from '../constants/observationStatus.js';
 import {
   getApprovalSummaryText,
   getFullReportTasks,
@@ -35,7 +36,15 @@ const COLORS = {
   purple50: [250, 245, 255],
   orange600: [234, 88, 12],
   orange50: [255, 247, 237],
+  indigo600: [79, 70, 229],
+  indigo50: [238, 242, 255],
   white: [255, 255, 255],
+};
+
+const OBSERVATION_STATUS_COLORS = {
+  pending: COLORS.yellow600,
+  in_review: COLORS.indigo600,
+  resolved: COLORS.green600,
 };
 
 const STATUS_COLORS = {
@@ -639,9 +648,10 @@ export function downloadStructuredPdfReport({
     writer.addSectionTitle('Observaciones generales (para mejora)');
     generalObservations.forEach((observation, index) => {
       writer.ensurePage(20);
-      writer.addParagraph(`${index + 1}. ${observation.title} (${observation.resolved ? 'Resuelta' : 'Pendiente'})`, {
+      const status = resolveObservationStatus(observation);
+      writer.addParagraph(`${index + 1}. ${observation.title} (${OBSERVATION_STATUS[status].label})`, {
         fontStyle: 'bold',
-        color: observation.resolved ? COLORS.green600 : COLORS.purple600,
+        color: OBSERVATION_STATUS_COLORS[status],
       });
       writer.addLabelValue('Alcance', getObservationScopeLabels(observation.scope).join(', '));
       writer.addLabelValue('Detalle', observation.description);
@@ -916,15 +926,16 @@ export function downloadGeneralReportPdf({ report }) {
   if (report.generalObservations.length > 0) {
     writer.addSectionTitle('Observaciones generales consolidadas');
     writer.addParagraph(
-      `${report.pendingObservationsCount} pendientes - ${report.resolvedObservationsCount} resueltas`,
+      `${report.pendingObservationsCount} pendientes - ${report.inReviewObservationsCount} en revisión - ${report.resolvedObservationsCount} resueltas`,
       { fontSize: 8.5, fontStyle: 'bold', color: COLORS.slate500 }
     );
     writer.addGap(2);
     report.generalObservations.forEach((observation, index) => {
       writer.ensurePage(20);
-      writer.addParagraph(`${index + 1}. [${observation.communityName}] ${observation.title} (${observation.resolved ? 'Resuelta' : 'Pendiente'})`, {
+      const status = resolveObservationStatus(observation);
+      writer.addParagraph(`${index + 1}. [${observation.communityName}] ${observation.title} (${OBSERVATION_STATUS[status].label})`, {
         fontStyle: 'bold',
-        color: observation.resolved ? COLORS.green600 : COLORS.purple600,
+        color: OBSERVATION_STATUS_COLORS[status],
       });
       writer.addParagraph(`Alcance: ${getObservationScopeLabels(observation.scope).join(', ')}`, {
         fontSize: 7.5,

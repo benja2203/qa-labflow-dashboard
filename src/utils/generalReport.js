@@ -1,5 +1,6 @@
 import { buildChecklistByPhases } from './checklist.js';
 import { createChecklistSummary, getFinalLabStatus, getTaskResult } from './report.js';
+import { resolveObservationStatus } from '../constants/observationStatus.js';
 
 function stripDoorContext(description) {
   return description.replace(/\s*\([^)]*\)$/, '').trim();
@@ -100,8 +101,9 @@ export function buildGeneralReport(communities, taskResults, generalObservations
     .sort((a, b) => b.count - a.count)
     .slice(0, 15);
 
-  const pendingObservationsCount = allObservations.filter(observation => !observation.resolved).length;
-  const resolvedObservationsCount = allObservations.length - pendingObservationsCount;
+  const pendingObservationsCount = allObservations.filter(observation => resolveObservationStatus(observation) === 'pending').length;
+  const inReviewObservationsCount = allObservations.filter(observation => resolveObservationStatus(observation) === 'in_review').length;
+  const resolvedObservationsCount = allObservations.filter(observation => resolveObservationStatus(observation) === 'resolved').length;
 
   return {
     communitiesCount: communities.length,
@@ -114,6 +116,7 @@ export function buildGeneralReport(communities, taskResults, generalObservations
     topFailingTests,
     generalObservations: allObservations,
     pendingObservationsCount,
+    inReviewObservationsCount,
     resolvedObservationsCount,
   };
 }
