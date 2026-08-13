@@ -10,7 +10,6 @@ import {
   Radio,
   ToggleLeft,
   Mail,
-  CreditCard,
 } from 'lucide-react';
 
 export const DEVICE_CATALOG = {
@@ -119,8 +118,6 @@ export const DEVICE_CATALOG = {
       'Selección de departamento/destino disponible y correcta según la comunidad.',
       'Al confirmar la visita, se abre el modal con la información de la visita generada.',
       'Opción "Imprimir QR" genera e imprime correctamente el QR de la visita en papel.',
-      'Opción "Enviar por correo" solicita el email del destinatario y el envío se concreta correctamente.',
-      'Opción "Enviar por WhatsApp" solicita el número de teléfono del destinatario y el envío se concreta correctamente.',
       'Panel de actividad en tiempo real refleja los accesos a medida que ocurren.',
       'Desplegable de puertas lista todas las puertas de la comunidad.',
       'Apertura remota de una puerta seleccionada desde el desplegable funciona correctamente.',
@@ -189,18 +186,6 @@ export const DEVICE_CATALOG = {
       'Probar tipos de invitación configurados para la comunidad (única, recurrente, por rango horario).',
       'Invitación recurrente: acceso fuera del rango horario → denegado; dentro del rango → concedido.',
       'Revocación de invitación desde la app → acceso bloqueado de inmediato.',
-    ],
-  },
-  qrcarnet: {
-    id: 'qrcarnet',
-    name: 'Carnet / QR Cédula',
-    role: 'optionalModule',
-    phase: 3,
-    phaseName: 'Fase 3: Interfaces y Módulos Lógicos',
-    icon: <CreditCard className="h-5 w-5" />,
-    tests: [
-      'Verificar que el módulo Carnet/QR Cédula está habilitado y configurado en la plataforma.',
-      'Verificar que los usuarios con carnet están correctamente cargados en el sistema.',
     ],
   },
 };
