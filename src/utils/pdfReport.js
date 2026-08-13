@@ -614,6 +614,7 @@ export function downloadStructuredPdfReport({
     { value: String(getPeripheralsCount(selectedCommunity)), label: 'Periféricos' },
     { value: String(summary.total), label: 'Puntos de control' },
     { value: String(issues.length), label: 'Observaciones', color: COLORS.red600 },
+    { value: String(generalObservations.length), label: 'Obs. generales', color: COLORS.purple600 },
   ]);
 
   writer.addMetricRow([

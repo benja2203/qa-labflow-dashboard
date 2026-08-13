@@ -269,11 +269,12 @@ export default function ReportModal({
                 </div>
               </section>
 
-              <section className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+              <section className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-5">
                 <MetricCard value={selectedCommunity.nodes?.length || 0} label="Controladores" />
                 <MetricCard value={peripheralsCount} label="Periféricos" />
                 <MetricCard value={summary.total} label="Puntos de Control" />
                 <MetricCard value={issues.length} label="Observaciones" className="text-red-500" />
+                <MetricCard value={generalObservations.length} label="Observaciones Generales" className="text-purple-500" />
               </section>
 
               <section className="pdf-avoid-break mb-8">
