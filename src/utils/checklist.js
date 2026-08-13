@@ -8,7 +8,9 @@ import {
 } from '../constants/accessConfig.js';
 
 const GUARD_DEVICES = ['guardDesk', 'guardPda'];
-const ACCESS_DEVICES = ['qr', 'stickertag', 'lpr', 'facial', ...GUARD_DEVICES];
+// StickerTag no recibe pruebas de Anti-Passback: aunque comparta puerta con
+// un lector que sí antipassbackea, no corresponde agregárselas a él.
+const ACCESS_DEVICES = ['qr', 'lpr', 'facial', ...GUARD_DEVICES];
 
 function createTaskId(communityId, baseId, testIndex) {
   return `community-${communityId}-${baseId}-test-${testIndex}`;
