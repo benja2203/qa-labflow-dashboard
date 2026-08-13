@@ -35,6 +35,7 @@ export default function Dashboard({
   handleCommentChange,
   handleEvidenceChange,
   toggleDeviceAllTasks,
+  setDeviceTasksStatus,
   onShowReport,
   onResetChecklist,
   onExportJson,
@@ -352,6 +353,7 @@ export default function Dashboard({
               handleCommentChange={handleCommentChange}
               handleEvidenceChange={handleEvidenceChange}
               toggleDeviceAllTasks={toggleDeviceAllTasks}
+              setDeviceTasksStatus={setDeviceTasksStatus}
               readOnly={isClosed}
             />
           ))

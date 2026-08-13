@@ -358,6 +358,26 @@ export default function App() {
     });
   };
 
+  const setDeviceTasksStatus = (tasks, status, comment) => {
+    if (isCommunityClosed) return;
+
+    setTaskResults(prev => {
+      const nextState = { ...prev };
+
+      tasks.forEach(task => {
+        nextState[task.id] = {
+          ...DEFAULT_TASK_RESULT,
+          ...(nextState[task.id] || {}),
+          status,
+          ...(comment ? { comment } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      return nextState;
+    });
+  };
+
   const handleAddGeneralObservation = ({ title, description, scope }) => {
     if (!selectedCommunity) return;
 
@@ -748,6 +768,7 @@ export default function App() {
               handleCommentChange={handleCommentChange}
               handleEvidenceChange={handleEvidenceChange}
               toggleDeviceAllTasks={toggleDeviceAllTasks}
+              setDeviceTasksStatus={setDeviceTasksStatus}
               onShowReport={handleShowReport}
               onResetChecklist={handleResetCurrentChecklist}
               onExportJson={handleExportCurrentJson}

@@ -10,6 +10,7 @@ export default function PhaseSection({
   handleCommentChange,
   handleEvidenceChange,
   toggleDeviceAllTasks,
+  setDeviceTasksStatus,
   readOnly,
 }) {
   return (
@@ -36,6 +37,7 @@ export default function PhaseSection({
             handleCommentChange={handleCommentChange}
             handleEvidenceChange={handleEvidenceChange}
             toggleDeviceAllTasks={toggleDeviceAllTasks}
+            setDeviceTasksStatus={setDeviceTasksStatus}
             readOnly={readOnly}
           />
         ))}
