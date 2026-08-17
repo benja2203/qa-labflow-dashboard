@@ -10,6 +10,7 @@ import {
   Radio,
   ToggleLeft,
   Mail,
+  CreditCard,
 } from 'lucide-react';
 
 export const DEVICE_CATALOG = {
@@ -187,6 +188,20 @@ export const DEVICE_CATALOG = {
       'Invitación recurrente: acceso fuera del rango horario → denegado; dentro del rango → concedido.',
       'Revocación de invitación desde la app → acceso bloqueado de inmediato.',
     ],
+  },
+  qrcarnet: {
+    id: 'qrcarnet',
+    name: 'Carnet / QR Cédula',
+    role: 'optionalModule',
+    phase: 3,
+    phaseName: 'Fase 3: Interfaces y Módulos Lógicos',
+    icon: <CreditCard className="h-5 w-5" />,
+    description: 'No agrega una tarjeta propia: habilita las pruebas [Carnet] en los lectores QR y Facial conectados.',
+    // Sin pruebas propias a propósito: este módulo solo habilita las
+    // pruebas [Carnet] inyectadas en los lectores QR/Facial (ver
+    // checklist.js). buildChecklistByPhases no genera tarjeta para un
+    // módulo sin pruebas, así que no aparece como una tarjeta vacía.
+    tests: [],
   },
 };
 

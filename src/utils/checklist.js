@@ -301,6 +301,9 @@ export function buildChecklistByPhases(selectedCommunity) {
   enabledModuleIds.forEach(moduleId => {
     const moduleConfig = DEVICE_CATALOG[moduleId];
     if (!moduleConfig || moduleConfig.role !== 'optionalModule') return;
+    // Un módulo sin pruebas propias (ej. qrcarnet, que solo habilita pruebas
+    // en otros dispositivos) no genera su propia tarjeta vacía en el checklist.
+    if (moduleConfig.tests.length === 0) return;
 
     initPhase(phases, moduleConfig.phase, moduleConfig.phaseName);
 

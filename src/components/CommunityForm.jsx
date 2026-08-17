@@ -917,7 +917,7 @@ export default function CommunityForm({
                         </h4>
                       </div>
                       <p className="mt-1 text-xs text-slate-500">
-                        Agrega {module.tests.length} pruebas específicas al checklist.
+                        {module.description || `Agrega ${module.tests.length} pruebas específicas al checklist.`}
                       </p>
                     </div>
                   </button>
