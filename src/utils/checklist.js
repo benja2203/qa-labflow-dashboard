@@ -12,6 +12,36 @@ const GUARD_DEVICES = ['guardDesk', 'guardPda'];
 // un lector que sí antipassbackea, no corresponde agregárselas a él.
 const ACCESS_DEVICES = ['qr', 'lpr', 'facial', ...GUARD_DEVICES];
 
+// Pruebas propias del pipeline de validación de cada factor dentro de una
+// cadena de Multivalidación (independiente de si la cadena es doble o
+// triple, y de qué otros factores la acompañen).
+const MULTIVALIDATION_FACTOR_TESTS = {
+  lpr: [
+    'LPR: patente detectada coincide con vehículo registrado → habilita el resto de la cadena.',
+    'LPR: patente en lista negra → acceso denegado sin evaluar el resto de los factores.',
+    'LPR: lectura de baja confianza (patente parcial/borrosa) → no habilita el resto de la cadena.',
+  ],
+  qr: [
+    'QR: código fuera de vigencia (vencido) → acceso denegado aunque el resto de factores sean correctos.',
+    'QR: usuario sin vigencia activa → acceso denegado.',
+    'QR: misma lectura repetida dentro de la ventana anti-duplicado configurada → no genera un segundo evento.',
+  ],
+  facial: [
+    'Facial: rostro reconocido pero usuario sin permiso/horario habilitado → acceso denegado.',
+    'Facial: rostro no reconocido → no habilita el resto de la cadena.',
+  ],
+};
+
+function getMultivalidationFactorTests(factorKey, { integrated = false } = {}) {
+  const baseTests = MULTIVALIDATION_FACTOR_TESTS[factorKey] || [];
+  // Cuando el QR es el lector integrado de Facial (mismo equipo, sin un
+  // Lector QR físico aparte), se reusa el mismo pipeline de validación de
+  // QR pero fraseado como "QR integrado" en vez de "QR".
+  return integrated
+    ? baseTests.map(test => test.replace(/^QR:/, 'QR integrado:'))
+    : baseTests;
+}
+
 function createTaskId(communityId, baseId, testIndex) {
   return `community-${communityId}-${baseId}-test-${testIndex}`;
 }
@@ -92,21 +122,37 @@ function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instanc
     const isFacialWithIntegratedQr = peripheralType === 'facial' &&
       rules.multiFactors.includes('facialQr');
 
+    // Capa 1: pruebas comunes a cualquier cadena de Multivalidación (doble
+    // o triple, cualquier combinación de factores).
+    dynamicTests.push(
+      `[Multi Validación] Confirmar factores configurados: ${factorNames}${isFacialWithIntegratedQr ? ' (mismo equipo)' : ''}.`,
+      '[Multi Validación] Acceso con todos los factores correctos → ingreso concedido.',
+      '[Multi Validación] Acceso con uno o más factores incorrectos/faltantes → acceso denegado.',
+      '[Multi Validación] Validación completa dentro del tiempo máximo configurado → ingreso concedido sin demoras anómalas.',
+      '[Multi Validación] Espera prolongada sin completar todos los factores (fuera del tiempo máximo configurado) → el sistema degrada a un flujo alternativo sin quedar trabado.',
+      '[Multi Validación] Registro del evento consolidado (todos los factores bajo el mismo evento) visible en el sistema.'
+    );
+
+    // Capa 2: pruebas propias del pipeline de validación de este equipo
+    // dentro de la cadena (LPR/QR/Facial validan cosas distintas).
+    getMultivalidationFactorTests(peripheralType)
+      .forEach(test => dynamicTests.push(`[Multi Validación] ${test}`));
+
     if (isFacialWithIntegratedQr) {
+      getMultivalidationFactorTests('qr', { integrated: true })
+        .forEach(test => dynamicTests.push(`[Multi Validación] ${test}`));
+    }
+
+    // Capa 3: cadena Triple LPR + Facial + QR. Lo único garantizado por
+    // diseño es que LPR se valida primero (identifica el vehículo antes de
+    // pedir el resto); el orden entre Facial y QR no está fijo.
+    const hasLpr = rules.multiFactors.includes('lpr');
+    const hasFacial = rules.multiFactors.includes('facial');
+    const hasQr = rules.multiFactors.includes('qr') || rules.multiFactors.includes('facialQr');
+
+    if (hasLpr && hasFacial && hasQr) {
       dynamicTests.push(
-        `[Multi Validación] Confirmar factores configurados: ${factorNames} (mismo equipo).`,
-        '[Multi Validación] Acceso con rostro + QR integrado correctos, ambos en este mismo equipo → ingreso concedido.',
-        '[Multi Validación] Acceso presentando solo uno de los dos factores en este equipo → acceso denegado.',
-        '[Multi Validación] Tiempo de espera entre validaciones respetado.',
-        '[Multi Validación] Registro del evento multi-validación en el sistema.'
-      );
-    } else {
-      dynamicTests.push(
-        `[Multi Validación] Confirmar factores configurados: ${factorNames}.`,
-        '[Multi Validación] Acceso con todos los factores correctos → ingreso concedido.',
-        '[Multi Validación] Acceso con solo uno de los factores → acceso denegado.',
-        '[Multi Validación] Tiempo de espera entre validaciones respetado.',
-        '[Multi Validación] Registro del evento multi-validación en el sistema.'
+        '[Multi Validación] LPR se valida primero en la cadena: si no coincide o no habilita el paso, el acceso se deniega sin llegar a solicitar Facial ni QR.'
       );
     }
   }
