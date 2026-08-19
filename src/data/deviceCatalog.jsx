@@ -11,6 +11,7 @@ import {
   ToggleLeft,
   Mail,
   CreditCard,
+  Monitor,
 } from 'lucide-react';
 
 export const DEVICE_CATALOG = {
@@ -105,16 +106,6 @@ export const DEVICE_CATALOG = {
       'Caso de borde: lectura de QR válido desde pantalla de celular con brillo bajo o mica reflectante.',
       'Verificar feedback del lector QR integrado: sonido, parpadeo o señal visual según configuración.',
     ],
-  },
-  // No es un periférico agregable a la topología (no aparece en "+ Agregar
-  // dispositivo"): es un factor seleccionable solo dentro de Multivalidación,
-  // para representar que el lector QR usado como segundo factor es el que ya
-  // trae integrado la Cámara Facial, sin requerir un Lector QR físico aparte.
-  facialQr: {
-    id: 'facialQr',
-    name: 'QR integrado (Facial)',
-    role: 'multivalidationFactor',
-    icon: <ScanLine className="h-5 w-5" />,
   },
   guardDesk: {
     id: 'guardDesk',
@@ -213,6 +204,19 @@ export const DEVICE_CATALOG = {
     // módulo sin pruebas, así que no aparece como una tarjeta vacía.
     tests: [],
   },
+  monitor: {
+    id: 'monitor',
+    name: 'Monitor',
+    role: 'peripheral',
+    phase: 3,
+    phaseName: 'Fase 3: Interfaces y Módulos Lógicos',
+    icon: <Monitor className="h-5 w-5" />,
+    tests: [
+      'Monitor encendido y conectado a la red.',
+      'Panel de actividad en tiempo real refleja los accesos a medida que ocurren, sin necesidad de refrescar manualmente.',
+      'Verificar que el monitor es solo de visualización (no permite ninguna acción/interacción desde ahí).',
+    ],
+  },
 };
 
 export const PERIPHERALS = Object.values(DEVICE_CATALOG).filter(
@@ -221,13 +225,6 @@ export const PERIPHERALS = Object.values(DEVICE_CATALOG).filter(
 
 export const OPTIONAL_MODULES = Object.values(DEVICE_CATALOG).filter(
   device => device.role === 'optionalModule'
-);
-
-// Factores seleccionables para Multivalidación: los periféricos agregables
-// normales, más factores "lógicos" como el QR integrado de la Cámara Facial,
-// que no son un dispositivo aparte que se agregue a la topología.
-export const MULTIVALIDATION_FACTORS = Object.values(DEVICE_CATALOG).filter(
-  device => device.role === 'peripheral' || device.role === 'multivalidationFactor'
 );
 
 export const INITIAL_COMMUNITIES = [];

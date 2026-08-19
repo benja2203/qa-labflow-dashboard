@@ -92,7 +92,15 @@ export const DEFAULT_INSTANCE_LINK = {
   cameraEnabled: false,
   cameraIp: '',
   cardReaderEnabled: false,
+  signalLightEnabled: false,
+  signalLightRelay: '',
+  signalLightSeconds: '',
 };
 
 export const CAMERA_CAPABLE_TYPES = ['qr', 'stickertag'];
 export const CARD_READER_CAPABLE_TYPES = ['guardDesk'];
+// Función de "luz/señalizador" que se enciende junto con la apertura, en un
+// relé y tiempo propios distintos del relé de apertura de la puerta (caso
+// real: pilares LPR que además encienden una luz para confirmar el ingreso).
+// Es una función que se activa por dispositivo, no un dispositivo aparte.
+export const SIGNAL_LIGHT_CAPABLE_TYPES = ['lpr'];

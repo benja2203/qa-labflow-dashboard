@@ -562,25 +562,10 @@ export default function ReportModal({
                         </li>
                       )}
 
-                      {selectedCommunity.rules?.multivalidation ? (
-                        <li className="flex items-start gap-2 text-sm font-bold text-slate-800">
-                          <CheckCircle2 className="h-5 w-5 shrink-0 text-green-500" />
-                          <div>
-                            Multivalidación habilitada
-                            <div className="mt-0.5 text-xs font-medium text-slate-500">
-                              Factores: {selectedCommunity.rules.multiFactors
-                                ?.map(id => DEVICE_CATALOG[id]?.name)
-                                .filter(Boolean)
-                                .join(' + ')}
-                            </div>
-                          </div>
-                        </li>
-                      ) : (
-                        <li className="flex items-start gap-2 text-sm font-medium text-slate-400">
-                          <Circle className="h-5 w-5 shrink-0" />
-                          Multivalidación no requerida
-                        </li>
-                      )}
+                      <li className="text-xs italic text-slate-400">
+                        Multivalidación: se detecta automáticamente por puerta (ver
+                        pruebas "[Multi Validación]" en los equipos que correspondan).
+                      </li>
 
                       {selectedCommunity.rules?.cancelInvitation ? (
                         <li className="flex items-start gap-2 text-sm font-bold text-slate-800">

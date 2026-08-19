@@ -55,6 +55,9 @@ function normalizePeripheralConfig(peripheral) {
         cameraEnabled: existing?.cameraEnabled ?? false,
         cameraIp: existing?.cameraIp || '',
         cardReaderEnabled: existing?.cardReaderEnabled ?? false,
+        signalLightEnabled: existing?.signalLightEnabled ?? false,
+        signalLightRelay: existing?.signalLightRelay || '',
+        signalLightSeconds: existing?.signalLightSeconds || '',
       };
     }),
   };
@@ -99,8 +102,6 @@ function normalizeCommunity(community) {
       antipassbackDoorIds: Array.isArray(community.rules?.antipassbackDoorIds)
         ? community.rules.antipassbackDoorIds
         : [],
-      multivalidation: Boolean(community.rules?.multivalidation),
-      multiFactors: Array.isArray(community.rules?.multiFactors) ? community.rules.multiFactors : [],
       cancelInvitation: Boolean(community.rules?.cancelInvitation),
       cancelInvitationDoorIds: Array.isArray(community.rules?.cancelInvitationDoorIds)
         ? community.rules.cancelInvitationDoorIds
