@@ -87,13 +87,28 @@ function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instanc
       .filter(Boolean)
       .join(' + ');
 
-    dynamicTests.push(
-      `[Multi Validación] Confirmar factores configurados: ${factorNames}.`,
-      '[Multi Validación] Acceso con todos los factores correctos → ingreso concedido.',
-      '[Multi Validación] Acceso con solo uno de los factores → acceso denegado.',
-      '[Multi Validación] Tiempo de espera entre validaciones respetado.',
-      '[Multi Validación] Registro del evento multi-validación en el sistema.'
-    );
+    // Caso especial: Facial resolviendo Rostro + QR con su propio lector QR
+    // integrado, sin un Lector QR físico separado en la cadena.
+    const isFacialWithIntegratedQr = peripheralType === 'facial' &&
+      rules.multiFactors.includes('facialQr');
+
+    if (isFacialWithIntegratedQr) {
+      dynamicTests.push(
+        `[Multi Validación] Confirmar factores configurados: ${factorNames} (mismo equipo).`,
+        '[Multi Validación] Acceso con rostro + QR integrado correctos, ambos en este mismo equipo → ingreso concedido.',
+        '[Multi Validación] Acceso presentando solo uno de los dos factores en este equipo → acceso denegado.',
+        '[Multi Validación] Tiempo de espera entre validaciones respetado.',
+        '[Multi Validación] Registro del evento multi-validación en el sistema.'
+      );
+    } else {
+      dynamicTests.push(
+        `[Multi Validación] Confirmar factores configurados: ${factorNames}.`,
+        '[Multi Validación] Acceso con todos los factores correctos → ingreso concedido.',
+        '[Multi Validación] Acceso con solo uno de los factores → acceso denegado.',
+        '[Multi Validación] Tiempo de espera entre validaciones respetado.',
+        '[Multi Validación] Registro del evento multi-validación en el sistema.'
+      );
+    }
   }
 
   if (instance?.cameraEnabled && CAMERA_CAPABLE_TYPES.includes(peripheralType)) {
