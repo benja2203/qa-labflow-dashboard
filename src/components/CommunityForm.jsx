@@ -15,7 +15,7 @@ import {
   Circle,
   Puzzle,
 } from 'lucide-react';
-import { DEVICE_CATALOG, PERIPHERALS, OPTIONAL_MODULES } from '../data/deviceCatalog.jsx';
+import { DEVICE_CATALOG, PERIPHERALS, OPTIONAL_MODULES, MULTIVALIDATION_FACTORS } from '../data/deviceCatalog.jsx';
 import {
   ACCESS_DIRECTIONS,
   CAMERA_CAPABLE_TYPES,
@@ -366,13 +366,21 @@ export default function CommunityForm({
   const handleToggleMultifactor = peripheralId => {
     setRules(prev => {
       const isSelected = prev.multiFactors.includes(peripheralId);
+      let multiFactors = isSelected
+        ? prev.multiFactors.filter(id => id !== peripheralId)
+        : [...prev.multiFactors, peripheralId];
 
-      return {
-        ...prev,
-        multiFactors: isSelected
-          ? prev.multiFactors.filter(id => id !== peripheralId)
-          : [...prev.multiFactors, peripheralId],
-      };
+      // "QR integrado (Facial)" no tiene sentido sin "Cámara Facial": si se
+      // saca Facial, se saca también el factor de su QR integrado; si se
+      // agrega el QR integrado, se asegura que Facial esté seleccionado.
+      if (peripheralId === 'facial' && isSelected) {
+        multiFactors = multiFactors.filter(id => id !== 'facialQr');
+      }
+      if (peripheralId === 'facialQr' && !isSelected && !multiFactors.includes('facial')) {
+        multiFactors = [...multiFactors, 'facial'];
+      }
+
+      return { ...prev, multiFactors };
     });
   };
 
@@ -1025,10 +1033,10 @@ export default function CommunityForm({
               {rules.multivalidation && (
                 <div className="mt-4 border-t border-blue-100 pt-3">
                   <label className="mb-2 block text-xs font-bold text-blue-800">
-                    Selecciona los equipos involucrados en la cadena:
+                    Selecciona los factores exigidos en la cadena:
                   </label>
                   <div className="flex flex-wrap gap-2">
-                    {PERIPHERALS.map(peripheral => {
+                    {MULTIVALIDATION_FACTORS.map(peripheral => {
                       const isSelected = rules.multiFactors.includes(peripheral.id);
 
                       return (
@@ -1048,6 +1056,11 @@ export default function CommunityForm({
                       );
                     })}
                   </div>
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    "QR integrado (Facial)" es el lector QR que ya trae incorporado el
+                    equipo Facial: úsalo cuando la cadena Rostro + QR se resuelve en un
+                    mismo equipo, sin agregar un Lector QR físico aparte.
+                  </p>
                 </div>
               )}
             </div>
