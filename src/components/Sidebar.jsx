@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, Building, ChevronRight, Lock, Network, Plus, ShieldCheck, Trash2, Upload } from 'lucide-react';
+import { BarChart3, Building, ChevronRight, Download, Lock, Network, Plus, ShieldCheck, Trash2, Upload } from 'lucide-react';
 import StorageUsageIndicator from './StorageUsageIndicator.jsx';
 
 export default function Sidebar({
@@ -13,6 +13,7 @@ export default function Sidebar({
   onShowGeneralReport,
   closedProjects,
   onOpenBackupSettings,
+  onOpenBulkExport,
 }) {
   return (
     <aside className="sticky top-0 z-10 flex h-auto w-full flex-col border-r border-slate-200 bg-white shadow-sm md:h-screen md:w-72">
@@ -38,6 +39,15 @@ export default function Sidebar({
         >
           <Upload className="h-4 w-4" />
           Importar JSON
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenBulkExport}
+          className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white p-2.5 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+        >
+          <Download className="h-4 w-4" />
+          Exportar varias
         </button>
       </div>
 

@@ -21,6 +21,7 @@ import Dashboard from './components/Dashboard.jsx';
 import ReportModal from './components/ReportModal.jsx';
 import GeneralReportView from './components/GeneralReportView.jsx';
 import BackupSettingsModal from './components/BackupSettingsModal.jsx';
+import BulkExportModal from './components/BulkExportModal.jsx';
 import { sendExceptionBackup } from './utils/externalBackup.js';
 
 
@@ -299,6 +300,46 @@ function downloadJson(filename, payload) {
   URL.revokeObjectURL(url);
 }
 
+// Arma el payload de exportación completo para CUALQUIER comunidad (no solo
+// la seleccionada), respetando si está cerrada -- en ese caso usa la foto
+// congelada (checklistByPhases/taskResults/deviceNotes del cierre) en vez
+// de recalcular desde el catálogo en vivo, igual que hace App con la
+// comunidad activa. Es la misma lógica de handleExportCurrentJson, pero
+// generalizada para que el export/archivo múltiple pueda usarla sin
+// necesitar cambiar cuál comunidad está seleccionada.
+function buildCommunityExportPayload(community, {
+  taskResults,
+  deviceNotes,
+  generalObservations,
+  deliveryExceptions,
+  closedProjects,
+}) {
+  const closedProject = closedProjects[community.id] || null;
+  const isClosed = Boolean(closedProject?.closed);
+
+  const checklistByPhases = isClosed
+    ? hydrateSnapshotIcons(closedProject.checklistByPhases)
+    : buildChecklistByPhases(community);
+
+  const effectiveTaskResults = isClosed ? (closedProject.taskResults || {}) : taskResults;
+  const effectiveDeviceNotes = isClosed ? (closedProject.deviceNotes || {}) : deviceNotes;
+
+  const summary = createChecklistSummary(checklistByPhases, effectiveTaskResults);
+  const finalLabStatus = getFinalLabStatus(summary);
+
+  return buildReportPayload({
+    selectedCommunity: community,
+    checklistByPhases,
+    taskResults: effectiveTaskResults,
+    summary,
+    finalLabStatus,
+    generalObservations: generalObservations[community.id] || [],
+    deliveryException: deliveryExceptions[community.id] || null,
+    closedProject,
+    deviceNotes: effectiveDeviceNotes,
+  });
+}
+
 function sanitizeFilename(value) {
   return value
     .toLowerCase()
@@ -321,6 +362,7 @@ export default function App() {
   const [taskIdsMigrated, setTaskIdsMigrated] = useLocalStorageState('qa-labflow-taskid-migration-v1', false);
   const [backupWebhookUrl, setBackupWebhookUrl] = useLocalStorageState('qa-labflow-backup-webhook-url', '');
   const [showBackupSettings, setShowBackupSettings] = useState(false);
+  const [showBulkExport, setShowBulkExport] = useState(false);
 
   const [commentBoxes, setCommentBoxes] = useState({});
   const [showReport, setShowReport] = useState(false);
@@ -853,6 +895,35 @@ export default function App() {
     setShowReport(false);
   };
 
+  // Descarga un JSON por cada comunidad seleccionada, completo (mismo
+  // formato que "Exportar JSON" / "Archivar proyecto" -- si está cerrada
+  // usa la foto congelada, así que las pruebas con su estado quedan tal
+  // cual, no recalculadas). Cada archivo es importable por separado con
+  // "Importar JSON", no hace falta un formato nuevo.
+  const handleBulkExport = async communityIds => {
+    const dataSources = {
+      taskResults,
+      deviceNotes,
+      generalObservations,
+      deliveryExceptions,
+      closedProjects,
+    };
+
+    for (const communityId of communityIds) {
+      const community = normalizedCommunities.find(c => c.id === communityId);
+      if (!community) continue;
+
+      const payload = buildCommunityExportPayload(community, dataSources);
+      const filename = `qa-labflow-${sanitizeFilename(community.name)}-${new Date().toISOString().slice(0, 10)}.json`;
+      downloadJson(filename, payload);
+
+      // Pequeña pausa entre descargas: los navegadores pueden bloquear
+      // varias descargas simultáneas si se disparan todas de una.
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise(resolve => setTimeout(resolve, 350));
+    }
+  };
+
   const handleTriggerImport = () => {
     fileInputRef.current?.click();
   };
@@ -960,6 +1031,7 @@ export default function App() {
         onShowGeneralReport={handleShowGeneralReport}
         closedProjects={closedProjects}
         onOpenBackupSettings={() => setShowBackupSettings(true)}
+        onOpenBulkExport={() => setShowBulkExport(true)}
       />
 
       <main className="h-screen flex-1 overflow-y-auto bg-slate-50/50 p-4 md:p-8">
@@ -1062,6 +1134,15 @@ export default function App() {
           webhookUrl={backupWebhookUrl}
           onSave={setBackupWebhookUrl}
           onClose={() => setShowBackupSettings(false)}
+        />
+      )}
+
+      {showBulkExport && (
+        <BulkExportModal
+          communities={normalizedCommunities}
+          closedProjects={closedProjects}
+          onExport={handleBulkExport}
+          onClose={() => setShowBulkExport(false)}
         />
       )}
     </div>
