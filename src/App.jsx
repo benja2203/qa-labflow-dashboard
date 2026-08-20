@@ -102,6 +102,10 @@ function normalizeCommunity(community) {
       antipassbackDoorIds: Array.isArray(community.rules?.antipassbackDoorIds)
         ? community.rules.antipassbackDoorIds
         : [],
+      multivalidation: Boolean(community.rules?.multivalidation),
+      multivalidationDoorIds: Array.isArray(community.rules?.multivalidationDoorIds)
+        ? community.rules.multivalidationDoorIds
+        : [],
       cancelInvitation: Boolean(community.rules?.cancelInvitation),
       cancelInvitationDoorIds: Array.isArray(community.rules?.cancelInvitationDoorIds)
         ? community.rules.cancelInvitationDoorIds

@@ -562,10 +562,17 @@ export default function ReportModal({
                         </li>
                       )}
 
-                      <li className="text-xs italic text-slate-400">
-                        Multivalidación: se detecta automáticamente por puerta (ver
-                        pruebas "[Multi Validación]" en los equipos que correspondan).
-                      </li>
+                      {selectedCommunity.rules?.multivalidation ? (
+                        <li className="flex items-start gap-2 text-sm font-bold text-slate-800">
+                          <CheckCircle2 className="h-5 w-5 shrink-0 text-green-500" />
+                          Multivalidación habilitada en puertas seleccionadas
+                        </li>
+                      ) : (
+                        <li className="flex items-start gap-2 text-sm font-medium text-slate-400">
+                          <Circle className="h-5 w-5 shrink-0" />
+                          Multivalidación no requerida
+                        </li>
+                      )}
 
                       {selectedCommunity.rules?.cancelInvitation ? (
                         <li className="flex items-start gap-2 text-sm font-bold text-slate-800">

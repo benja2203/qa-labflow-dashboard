@@ -32,6 +32,8 @@ import {
 const EMPTY_RULES = {
   antipassback: false,
   antipassbackDoorIds: [],
+  multivalidation: false,
+  multivalidationDoorIds: [],
   cancelInvitation: false,
   cancelInvitationDoorIds: [],
 };
@@ -130,6 +132,10 @@ export default function CommunityForm({
       antipassbackDoorIds: Array.isArray(initialCommunity.rules?.antipassbackDoorIds)
         ? initialCommunity.rules.antipassbackDoorIds
         : [],
+      multivalidation: Boolean(initialCommunity.rules?.multivalidation),
+      multivalidationDoorIds: Array.isArray(initialCommunity.rules?.multivalidationDoorIds)
+        ? initialCommunity.rules.multivalidationDoorIds
+        : [],
       cancelInvitation: Boolean(initialCommunity.rules?.cancelInvitation),
       cancelInvitationDoorIds: Array.isArray(initialCommunity.rules?.cancelInvitationDoorIds)
         ? initialCommunity.rules.cancelInvitationDoorIds
@@ -218,6 +224,16 @@ export default function CommunityForm({
         ? current.filter(id => id !== doorId)
         : [...current, doorId];
       return { ...prev, cancelInvitationDoorIds: next };
+    });
+  };
+
+  const handleToggleMultivalidationDoor = doorId => {
+    setRules(prev => {
+      const current = prev.multivalidationDoorIds || [];
+      const next = current.includes(doorId)
+        ? current.filter(id => id !== doorId)
+        : [...current, doorId];
+      return { ...prev, multivalidationDoorIds: next };
     });
   };
 
@@ -1020,23 +1036,75 @@ export default function CommunityForm({
               })()}
             </div>
 
-            <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 text-slate-400">
-                  <ShieldCheck className="h-5 w-5" />
+            <div className={`rounded-xl border-2 p-4 transition-colors ${
+              rules.multivalidation
+                ? 'border-blue-500 bg-blue-50/50'
+                : 'border-slate-200 bg-white hover:border-slate-300'
+            }`}>
+              <button
+                type="button"
+                onClick={() => setRules(prev => ({ ...prev, multivalidation: !prev.multivalidation }))}
+                className="flex w-full items-start gap-3 text-left"
+              >
+                <div className={`mt-0.5 ${rules.multivalidation ? 'text-blue-600' : 'text-slate-400'}`}>
+                  {rules.multivalidation ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-slate-700">
+                  <h4 className={`text-sm font-bold ${rules.multivalidation ? 'text-blue-900' : 'text-slate-700'}`}>
                     Multivalidación
                   </h4>
                   <p className="mt-1 text-xs text-slate-500">
-                    No requiere configuración: se detecta sola por puerta, según qué
-                    lectores (LPR/Facial/QR) estén conectados a esa misma puerta. Una
-                    Cámara Facial sola ya cuenta doble (rostro + su QR integrado); si
-                    además hay un LPR en la misma puerta, pasa a triple.
+                    Marcá las puertas donde TODOS los lectores conectados (LPR/Facial/QR)
+                    son obligatorios para pasar — no uses esto si esa puerta acepta
+                    cualquiera de los métodos indistintamente (eso no es multivalidación,
+                    es simplemente tener varias formas de acceso disponibles).
                   </p>
                 </div>
-              </div>
+              </button>
+
+              {rules.multivalidation && (() => {
+                const allDoors = nodes.flatMap(node =>
+                  (node.doors || []).map(door => ({ door, nodeLabel: node.label }))
+                );
+                return (
+                  <div className="mt-3 border-t border-blue-100 pt-3">
+                    <label className="mb-2 block text-xs font-bold text-blue-800">
+                      Seleccionar puertas con Multivalidación obligatoria:
+                    </label>
+                    {allDoors.length === 0 ? (
+                      <p className="text-xs italic text-slate-400">Agrega puertas a los controladores primero.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {allDoors.map(({ door, nodeLabel }) => {
+                          const isSelected = (rules.multivalidationDoorIds || []).includes(door.id);
+                          return (
+                            <button
+                              key={door.id}
+                              type="button"
+                              onClick={() => handleToggleMultivalidationDoor(door.id)}
+                              className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-all ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-600 ring-offset-1'
+                                  : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              {door.name || 'Sin nombre'}
+                              <span className={`font-normal ${isSelected ? 'opacity-70' : 'text-slate-400'}`}>
+                                ({nodeLabel})
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      El código arma solo si es doble o triple según qué queda conectado
+                      en cada puerta marcada (una Cámara Facial sola ya cuenta doble, por
+                      su QR integrado). Vos solo decidís en cuáles puertas es obligatorio.
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className={`rounded-xl border-2 p-4 transition-colors ${

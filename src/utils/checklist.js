@@ -48,12 +48,16 @@ function getMultivalidationFactorTests(factorKey, { integrated = false } = {}) {
     : baseTests;
 }
 
-// La Multivalidación ya no es una regla global de la comunidad: se detecta
-// automáticamente por puerta, según qué dispositivos (LPR/Facial/QR) están
-// conectados a esa misma puerta. Esto permite que una sola comunidad tenga
+// La Multivalidación se marca por puerta (rules.multivalidationDoorIds), no
+// a nivel de toda la comunidad: esto permite que una sola comunidad tenga
 // zonas con doble validación (ej. Facial con su QR integrado en un
 // torniquete) y zonas con triple validación (ej. LPR + Facial + QR en un
-// pilar vehicular) sin pisarse entre sí.
+// pilar vehicular) sin pisarse entre sí. El usuario decide EN QUÉ puertas es
+// obligatoria (compartir puerta no alcanza: esa puerta podría aceptar
+// Facial O StickerTag O LPR como métodos alternativos, no exigir los tres).
+// Una vez marcada la puerta, este helper solo calcula automáticamente si
+// corresponde doble o triple según qué dispositivos (LPR/Facial/QR) están
+// conectados a esa misma puerta.
 //
 // La Cámara Facial siempre trae su propio lector QR integrado (ver sus
 // pruebas base), así que aporta el factor Facial Y el factor QR por sí sola,
@@ -214,9 +218,19 @@ function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instanc
   // Multivalidación: se agrega al final (no entre las capas anteriores) para
   // no correr de posición los IDs de pruebas ya guardadas de instalaciones
   // existentes que nunca la usan (ver PROJECT_CONTEXT.md sobre IDs
-  // posicionales). Se detecta automáticamente por puerta — ver
-  // computeDoorFactors más arriba — en vez de una regla global.
-  const doorFactorsForThisDoor = instance?.doorId ? doorFactors?.[instance.doorId] : null;
+  // posicionales).
+  //
+  // Compartir puerta NO implica multivalidación por sí solo: una puerta
+  // vehicular puede tener Facial + StickerTag + LPR como métodos alternativos
+  // (cualquiera de ellos habilita el paso), sin que sean obligatorios todos
+  // juntos. Por eso la puerta tiene que estar marcada explícitamente en
+  // rules.multivalidationDoorIds — recién ahí se auto-calcula si es doble o
+  // triple según qué queda conectado en esa puerta (ver computeDoorFactors).
+  const multivalidationDoorIds = Array.isArray(rules.multivalidationDoorIds) ? rules.multivalidationDoorIds : [];
+  const doorRequiresMultivalidation = rules.multivalidation &&
+    instance?.doorId &&
+    multivalidationDoorIds.includes(instance.doorId);
+  const doorFactorsForThisDoor = doorRequiresMultivalidation ? doorFactors?.[instance.doorId] : null;
 
   if (doorFactorsForThisDoor && MULTIVALIDATION_DEVICES.includes(peripheralType)) {
     const { hasLpr, hasFacial, hasStandaloneQr } = doorFactorsForThisDoor;
