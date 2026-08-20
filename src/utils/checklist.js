@@ -15,8 +15,10 @@ const ACCESS_DEVICES = ['qr', 'lpr', 'facial', ...GUARD_DEVICES];
 
 // Dispositivos que pueden participar de una cadena de Multivalidación.
 // A diferencia de Anti-Passback/Cancelar Invitación, Guard Desk/PDA no
-// forman parte de esta cadena.
-const MULTIVALIDATION_DEVICES = ['lpr', 'qr', 'facial'];
+// forman parte de esta cadena. StickerTag sí puede ser un factor más
+// (cualquier lector físico puede formar parte de una cadena, no solo
+// LPR/Facial/QR) — la puerta tiene que estar marcada igual que con el resto.
+const MULTIVALIDATION_DEVICES = ['lpr', 'qr', 'facial', 'stickertag'];
 
 // Pruebas propias del pipeline de validación de cada factor dentro de una
 // cadena de Multivalidación (independiente de si la cadena es doble o
@@ -35,6 +37,11 @@ const MULTIVALIDATION_FACTOR_TESTS = {
   facial: [
     'Facial: rostro reconocido pero usuario sin permiso/horario habilitado → acceso denegado.',
     'Facial: rostro no reconocido → no habilita el resto de la cadena.',
+  ],
+  stickertag: [
+    'StickerTag: tag detectado pero no asociado a un usuario habilitado → acceso denegado sin evaluar el resto de los factores.',
+    'StickerTag: tag eliminado o de otra comunidad → acceso denegado.',
+    'StickerTag: tag no detectado (fuera de rango o dañado) → no habilita el resto de la cadena.',
   ],
 };
 
@@ -74,11 +81,12 @@ function computeDoorFactors(node) {
       if (!instance.doorId) continue;
 
       if (!doorFactors[instance.doorId]) {
-        doorFactors[instance.doorId] = { hasLpr: false, hasFacial: false, hasStandaloneQr: false };
+        doorFactors[instance.doorId] = { hasLpr: false, hasFacial: false, hasStandaloneQr: false, hasStickerTag: false };
       }
       if (peripheralConfig.type === 'lpr') doorFactors[instance.doorId].hasLpr = true;
       if (peripheralConfig.type === 'facial') doorFactors[instance.doorId].hasFacial = true;
       if (peripheralConfig.type === 'qr') doorFactors[instance.doorId].hasStandaloneQr = true;
+      if (peripheralConfig.type === 'stickertag') doorFactors[instance.doorId].hasStickerTag = true;
     }
   });
 
@@ -99,6 +107,8 @@ function getDoorFactorSummary(factors) {
   } else if (factors.hasStandaloneQr) {
     parts.push(DEVICE_CATALOG.qr?.name || 'QR');
   }
+
+  if (factors.hasStickerTag) parts.push(DEVICE_CATALOG.stickertag?.name || 'StickerTag');
 
   return parts.join(' + ');
 }
@@ -233,9 +243,9 @@ function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instanc
   const doorFactorsForThisDoor = doorRequiresMultivalidation ? doorFactors?.[instance.doorId] : null;
 
   if (doorFactorsForThisDoor && MULTIVALIDATION_DEVICES.includes(peripheralType)) {
-    const { hasLpr, hasFacial, hasStandaloneQr } = doorFactorsForThisDoor;
+    const { hasLpr, hasFacial, hasStandaloneQr, hasStickerTag } = doorFactorsForThisDoor;
     const hasQr = hasFacial || hasStandaloneQr; // el QR integrado de Facial cuenta como factor QR
-    const factorCount = [hasLpr, hasFacial, hasQr].filter(Boolean).length;
+    const factorCount = [hasLpr, hasFacial, hasQr, hasStickerTag].filter(Boolean).length;
     const isMultivalidation = factorCount >= 2;
 
     if (isMultivalidation) {
