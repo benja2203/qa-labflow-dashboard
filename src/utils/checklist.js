@@ -2,6 +2,7 @@ import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
 import {
   CAMERA_CAPABLE_TYPES,
   CARD_READER_CAPABLE_TYPES,
+  SIGNAL_LIGHT_CAPABLE_TYPES,
   getDirectionLabel,
   getRelaysLabel,
   getRelaySourceLabel,
@@ -11,6 +12,92 @@ const GUARD_DEVICES = ['guardDesk', 'guardPda'];
 // StickerTag no recibe pruebas de Anti-Passback: aunque comparta puerta con
 // un lector que sí antipassbackea, no corresponde agregárselas a él.
 const ACCESS_DEVICES = ['qr', 'lpr', 'facial', ...GUARD_DEVICES];
+
+// Dispositivos que pueden participar de una cadena de Multivalidación.
+// A diferencia de Anti-Passback/Cancelar Invitación, Guard Desk/PDA no
+// forman parte de esta cadena.
+const MULTIVALIDATION_DEVICES = ['lpr', 'qr', 'facial'];
+
+// Pruebas propias del pipeline de validación de cada factor dentro de una
+// cadena de Multivalidación (independiente de si la cadena es doble o
+// triple, y de qué otros factores la acompañen).
+const MULTIVALIDATION_FACTOR_TESTS = {
+  lpr: [
+    'LPR: patente detectada coincide con vehículo registrado → habilita el resto de la cadena.',
+    'LPR: patente en lista negra → acceso denegado sin evaluar el resto de los factores.',
+    'LPR: lectura de baja confianza (patente parcial/borrosa) → no habilita el resto de la cadena.',
+  ],
+  qr: [
+    'QR: código fuera de vigencia (vencido) → acceso denegado aunque el resto de factores sean correctos.',
+    'QR: usuario sin vigencia activa → acceso denegado.',
+    'QR: misma lectura repetida dentro de la ventana anti-duplicado configurada → no genera un segundo evento.',
+  ],
+  facial: [
+    'Facial: rostro reconocido pero usuario sin permiso/horario habilitado → acceso denegado.',
+    'Facial: rostro no reconocido → no habilita el resto de la cadena.',
+  ],
+};
+
+function getMultivalidationFactorTests(factorKey, { integrated = false } = {}) {
+  const baseTests = MULTIVALIDATION_FACTOR_TESTS[factorKey] || [];
+  // Cuando el QR es el lector integrado de Facial (mismo equipo, sin un
+  // Lector QR físico aparte), se reusa el mismo pipeline de validación de
+  // QR pero fraseado como "QR integrado" en vez de "QR".
+  return integrated
+    ? baseTests.map(test => test.replace(/^QR:/, 'QR integrado:'))
+    : baseTests;
+}
+
+// La Multivalidación ya no es una regla global de la comunidad: se detecta
+// automáticamente por puerta, según qué dispositivos (LPR/Facial/QR) están
+// conectados a esa misma puerta. Esto permite que una sola comunidad tenga
+// zonas con doble validación (ej. Facial con su QR integrado en un
+// torniquete) y zonas con triple validación (ej. LPR + Facial + QR en un
+// pilar vehicular) sin pisarse entre sí.
+//
+// La Cámara Facial siempre trae su propio lector QR integrado (ver sus
+// pruebas base), así que aporta el factor Facial Y el factor QR por sí sola,
+// sin necesitar un Lector QR físico aparte.
+function computeDoorFactors(node) {
+  const doorFactors = {};
+
+  (node.peripherals || []).forEach(peripheralConfig => {
+    if (!MULTIVALIDATION_DEVICES.includes(peripheralConfig.type)) return;
+
+    const qty = Number(peripheralConfig.qty) || 1;
+    for (let index = 0; index < qty; index += 1) {
+      const instance = getPeripheralInstance(peripheralConfig, index);
+      if (!instance.doorId) continue;
+
+      if (!doorFactors[instance.doorId]) {
+        doorFactors[instance.doorId] = { hasLpr: false, hasFacial: false, hasStandaloneQr: false };
+      }
+      if (peripheralConfig.type === 'lpr') doorFactors[instance.doorId].hasLpr = true;
+      if (peripheralConfig.type === 'facial') doorFactors[instance.doorId].hasFacial = true;
+      if (peripheralConfig.type === 'qr') doorFactors[instance.doorId].hasStandaloneQr = true;
+    }
+  });
+
+  return doorFactors;
+}
+
+function getDoorFactorSummary(factors) {
+  const parts = [];
+  if (factors.hasLpr) parts.push(DEVICE_CATALOG.lpr?.name || 'LPR');
+
+  if (factors.hasFacial) {
+    const facialName = DEVICE_CATALOG.facial?.name || 'Facial';
+    parts.push(
+      factors.hasStandaloneQr
+        ? `${facialName} (con QR integrado) + ${DEVICE_CATALOG.qr?.name || 'QR'}`
+        : `${facialName} (con QR integrado)`
+    );
+  } else if (factors.hasStandaloneQr) {
+    parts.push(DEVICE_CATALOG.qr?.name || 'QR');
+  }
+
+  return parts.join(' + ');
+}
 
 function createTaskId(communityId, baseId, testIndex) {
   return `community-${communityId}-${baseId}-test-${testIndex}`;
@@ -26,7 +113,7 @@ function initPhase(phases, phaseNumber, phaseName) {
   }
 }
 
-function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instance) {
+function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instance, doorFactors) {
   const dynamicTests = [...baseTests];
   const rules = selectedCommunity?.rules || {};
   const enabledModules = Array.isArray(selectedCommunity?.modules) ? selectedCommunity.modules : [];
@@ -81,36 +168,6 @@ function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instanc
     );
   }
 
-  if (rules.multivalidation && rules.multiFactors?.includes(peripheralType)) {
-    const factorNames = rules.multiFactors
-      .map(id => DEVICE_CATALOG[id]?.name)
-      .filter(Boolean)
-      .join(' + ');
-
-    // Caso especial: Facial resolviendo Rostro + QR con su propio lector QR
-    // integrado, sin un Lector QR físico separado en la cadena.
-    const isFacialWithIntegratedQr = peripheralType === 'facial' &&
-      rules.multiFactors.includes('facialQr');
-
-    if (isFacialWithIntegratedQr) {
-      dynamicTests.push(
-        `[Multi Validación] Confirmar factores configurados: ${factorNames} (mismo equipo).`,
-        '[Multi Validación] Acceso con rostro + QR integrado correctos, ambos en este mismo equipo → ingreso concedido.',
-        '[Multi Validación] Acceso presentando solo uno de los dos factores en este equipo → acceso denegado.',
-        '[Multi Validación] Tiempo de espera entre validaciones respetado.',
-        '[Multi Validación] Registro del evento multi-validación en el sistema.'
-      );
-    } else {
-      dynamicTests.push(
-        `[Multi Validación] Confirmar factores configurados: ${factorNames}.`,
-        '[Multi Validación] Acceso con todos los factores correctos → ingreso concedido.',
-        '[Multi Validación] Acceso con solo uno de los factores → acceso denegado.',
-        '[Multi Validación] Tiempo de espera entre validaciones respetado.',
-        '[Multi Validación] Registro del evento multi-validación en el sistema.'
-      );
-    }
-  }
-
   if (instance?.cameraEnabled && CAMERA_CAPABLE_TYPES.includes(peripheralType)) {
     const camRef = instance.cameraIp ? ` (${instance.cameraIp})` : '';
     dynamicTests.push(
@@ -145,6 +202,66 @@ function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instanc
     }
   }
 
+  if (instance?.signalLightEnabled && SIGNAL_LIGHT_CAPABLE_TYPES.includes(peripheralType)) {
+    const relayRef = instance.signalLightRelay ? ` (${instance.signalLightRelay})` : '';
+    const secondsRef = instance.signalLightSeconds ? ` durante ${instance.signalLightSeconds}` : '';
+    dynamicTests.push(
+      `[Señalización${relayRef}] Verificar que la luz/señalizador se enciende al conceder el acceso.`,
+      `[Señalización${relayRef}] Verificar que la luz se apaga sola tras el tiempo configurado${secondsRef}.`
+    );
+  }
+
+  // Multivalidación: se agrega al final (no entre las capas anteriores) para
+  // no correr de posición los IDs de pruebas ya guardadas de instalaciones
+  // existentes que nunca la usan (ver PROJECT_CONTEXT.md sobre IDs
+  // posicionales). Se detecta automáticamente por puerta — ver
+  // computeDoorFactors más arriba — en vez de una regla global.
+  const doorFactorsForThisDoor = instance?.doorId ? doorFactors?.[instance.doorId] : null;
+
+  if (doorFactorsForThisDoor && MULTIVALIDATION_DEVICES.includes(peripheralType)) {
+    const { hasLpr, hasFacial, hasStandaloneQr } = doorFactorsForThisDoor;
+    const hasQr = hasFacial || hasStandaloneQr; // el QR integrado de Facial cuenta como factor QR
+    const factorCount = [hasLpr, hasFacial, hasQr].filter(Boolean).length;
+    const isMultivalidation = factorCount >= 2;
+
+    if (isMultivalidation) {
+      const factorNames = getDoorFactorSummary(doorFactorsForThisDoor);
+
+      // Capa 1: pruebas comunes a cualquier cadena de Multivalidación (doble
+      // o triple, cualquier combinación de factores presentes en esta puerta).
+      dynamicTests.push(
+        `[Multi Validación] Confirmar factores configurados en esta puerta: ${factorNames}.`,
+        '[Multi Validación] Acceso con todos los factores correctos → ingreso concedido.',
+        '[Multi Validación] Acceso con uno o más factores incorrectos/faltantes → acceso denegado.',
+        '[Multi Validación] Validación completa dentro del tiempo máximo configurado → ingreso concedido sin demoras anómalas.',
+        '[Multi Validación] Espera prolongada sin completar todos los factores (fuera del tiempo máximo configurado) → el sistema degrada a un flujo alternativo sin quedar trabado.',
+        '[Multi Validación] Registro del evento consolidado (todos los factores bajo el mismo evento) visible en el sistema.'
+      );
+
+      // Capa 2: pruebas propias del pipeline de validación de este equipo
+      // dentro de la cadena (LPR/QR/Facial validan cosas distintas).
+      getMultivalidationFactorTests(peripheralType)
+        .forEach(test => dynamicTests.push(`[Multi Validación] ${test}`));
+
+      // Facial siempre aporta también su propio pipeline de QR integrado,
+      // sin importar si además hay un Lector QR físico en la misma puerta.
+      if (peripheralType === 'facial') {
+        getMultivalidationFactorTests('qr', { integrated: true })
+          .forEach(test => dynamicTests.push(`[Multi Validación] ${test}`));
+      }
+
+      // Capa 3: cadena con LPR + Facial (triple, con QR propio o integrado).
+      // Lo único garantizado por diseño es que LPR se valida primero
+      // (identifica el vehículo antes de pedir el resto); el orden entre
+      // Facial y QR no está fijo.
+      if (hasLpr && hasFacial) {
+        dynamicTests.push(
+          '[Multi Validación] LPR se valida primero en la cadena: si no coincide o no habilita el paso, el acceso se deniega sin llegar a solicitar Facial ni QR.'
+        );
+      }
+    }
+  }
+
   return dynamicTests;
 }
 
@@ -170,6 +287,9 @@ function getPeripheralInstance(peripheralConfig, index) {
     cameraEnabled: existingInstance?.cameraEnabled ?? false,
     cameraIp: existingInstance?.cameraIp || '',
     cardReaderEnabled: existingInstance?.cardReaderEnabled ?? false,
+    signalLightEnabled: existingInstance?.signalLightEnabled ?? false,
+    signalLightRelay: existingInstance?.signalLightRelay || '',
+    signalLightSeconds: existingInstance?.signalLightSeconds || '',
   };
 }
 
@@ -263,6 +383,8 @@ export function buildChecklistByPhases(selectedCommunity) {
       })),
     });
 
+    const doorFactors = computeDoorFactors(node);
+
     (node.peripherals || []).forEach(peripheralConfig => {
       const peripheralCatalog = DEVICE_CATALOG[peripheralConfig.type];
       if (!peripheralCatalog) return;
@@ -277,7 +399,8 @@ export function buildChecklistByPhases(selectedCommunity) {
           selectedCommunity,
           peripheralConfig.type,
           peripheralCatalog.tests,
-          instance
+          instance,
+          doorFactors
         );
         const baseId = `${node.id}-${peripheralConfig.type}-${instance.id}`;
         const deviceDisplayName = getPeripheralDisplayName(
@@ -302,6 +425,8 @@ export function buildChecklistByPhases(selectedCommunity) {
           cameraEnabled: instance.cameraEnabled,
           cameraIp: instance.cameraIp,
           cardReaderEnabled: instance.cardReaderEnabled,
+          signalLightEnabled: instance.signalLightEnabled,
+          signalLightRelay: instance.signalLightRelay,
           tasks: dynamicTests.map((description, testIndex) => ({
             id: createTaskId(selectedCommunity.id, baseId, testIndex),
             description: applyDoorContextToDescription(description, doorInfo, relayInfo),

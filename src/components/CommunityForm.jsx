@@ -6,6 +6,7 @@ import {
   Camera,
   CreditCard,
   DoorOpen,
+  Lightbulb,
   Plus,
   Server,
   Settings2,
@@ -15,11 +16,12 @@ import {
   Circle,
   Puzzle,
 } from 'lucide-react';
-import { DEVICE_CATALOG, PERIPHERALS, OPTIONAL_MODULES, MULTIVALIDATION_FACTORS } from '../data/deviceCatalog.jsx';
+import { DEVICE_CATALOG, PERIPHERALS, OPTIONAL_MODULES } from '../data/deviceCatalog.jsx';
 import {
   ACCESS_DIRECTIONS,
   CAMERA_CAPABLE_TYPES,
   CARD_READER_CAPABLE_TYPES,
+  SIGNAL_LIGHT_CAPABLE_TYPES,
   DOOR_TYPES,
   PORT_OPTIONS,
   RELAY_OPTIONS,
@@ -30,8 +32,6 @@ import {
 const EMPTY_RULES = {
   antipassback: false,
   antipassbackDoorIds: [],
-  multivalidation: false,
-  multiFactors: [],
   cancelInvitation: false,
   cancelInvitationDoorIds: [],
 };
@@ -69,6 +69,9 @@ function normalizePeripheralConfig(peripheral) {
       cameraEnabled: existing?.cameraEnabled ?? false,
       cameraIp: existing?.cameraIp || '',
       cardReaderEnabled: existing?.cardReaderEnabled ?? false,
+      signalLightEnabled: existing?.signalLightEnabled ?? false,
+      signalLightRelay: existing?.signalLightRelay || '',
+      signalLightSeconds: existing?.signalLightSeconds || '',
     };
   });
 
@@ -127,8 +130,6 @@ export default function CommunityForm({
       antipassbackDoorIds: Array.isArray(initialCommunity.rules?.antipassbackDoorIds)
         ? initialCommunity.rules.antipassbackDoorIds
         : [],
-      multivalidation: Boolean(initialCommunity.rules?.multivalidation),
-      multiFactors: initialCommunity.rules?.multiFactors || [],
       cancelInvitation: Boolean(initialCommunity.rules?.cancelInvitation),
       cancelInvitationDoorIds: Array.isArray(initialCommunity.rules?.cancelInvitationDoorIds)
         ? initialCommunity.rules.cancelInvitationDoorIds
@@ -363,27 +364,6 @@ export default function CommunityForm({
     }));
   };
 
-  const handleToggleMultifactor = peripheralId => {
-    setRules(prev => {
-      const isSelected = prev.multiFactors.includes(peripheralId);
-      let multiFactors = isSelected
-        ? prev.multiFactors.filter(id => id !== peripheralId)
-        : [...prev.multiFactors, peripheralId];
-
-      // "QR integrado (Facial)" no tiene sentido sin "Cámara Facial": si se
-      // saca Facial, se saca también el factor de su QR integrado; si se
-      // agrega el QR integrado, se asegura que Facial esté seleccionado.
-      if (peripheralId === 'facial' && isSelected) {
-        multiFactors = multiFactors.filter(id => id !== 'facialQr');
-      }
-      if (peripheralId === 'facialQr' && !isSelected && !multiFactors.includes('facial')) {
-        multiFactors = [...multiFactors, 'facial'];
-      }
-
-      return { ...prev, multiFactors };
-    });
-  };
-
   const handleToggleModule = moduleId => {
     setSelectedModules(prev => (
       prev.includes(moduleId)
@@ -395,11 +375,6 @@ export default function CommunityForm({
   const handleSubmit = () => {
     if (!communityName.trim() || nodes.length === 0) {
       alert('Necesitas un nombre de comunidad y al menos un controlador.');
-      return;
-    }
-
-    if (rules.multivalidation && rules.multiFactors.length < 2) {
-      alert('Para Multivalidación debes seleccionar al menos 2 factores exigidos.');
       return;
     }
 
@@ -864,6 +839,44 @@ export default function CommunityForm({
                                         </button>
                                       </div>
                                     )}
+
+                                    {SIGNAL_LIGHT_CAPABLE_TYPES.includes(peripheral.type) && (
+                                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, {
+                                            signalLightEnabled: !instance.signalLightEnabled,
+                                            ...(!instance.signalLightEnabled ? {} : { signalLightRelay: '', signalLightSeconds: '' }),
+                                          })}
+                                          className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-bold transition-all ${
+                                            instance.signalLightEnabled
+                                              ? 'border-yellow-400 bg-yellow-50 text-yellow-700'
+                                              : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                                          }`}
+                                        >
+                                          <Lightbulb className="h-3.5 w-3.5" />
+                                          {instance.signalLightEnabled ? 'Señalización activa' : '+ Señalización (luz al validar)'}
+                                        </button>
+                                        {instance.signalLightEnabled && (
+                                          <>
+                                            <input
+                                              type="text"
+                                              value={instance.signalLightRelay}
+                                              onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { signalLightRelay: event.target.value })}
+                                              placeholder="Relé de la luz (ej. Rele 2)"
+                                              className="rounded-md border border-yellow-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400"
+                                            />
+                                            <input
+                                              type="text"
+                                              value={instance.signalLightSeconds}
+                                              onChange={event => handleUpdateInstanceLink(node.id, peripheral.type, instance.id, { signalLightSeconds: event.target.value })}
+                                              placeholder="Tiempo encendida (ej. 15 seg)"
+                                              className="rounded-md border border-yellow-200 bg-white p-2 text-xs text-slate-700 outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400"
+                                            />
+                                          </>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -1007,62 +1020,23 @@ export default function CommunityForm({
               })()}
             </div>
 
-            <div className={`rounded-xl border-2 p-4 transition-colors ${
-              rules.multivalidation
-                ? 'border-blue-500 bg-blue-50/50'
-                : 'border-slate-200 bg-white hover:border-slate-300'
-            }`}>
-              <button
-                type="button"
-                onClick={() => setRules(prev => ({ ...prev, multivalidation: !prev.multivalidation }))}
-                className="flex w-full items-start gap-3 text-left"
-              >
-                <div className={`mt-0.5 ${rules.multivalidation ? 'text-blue-600' : 'text-slate-400'}`}>
-                  {rules.multivalidation ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+            <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 text-slate-400">
+                  <ShieldCheck className="h-5 w-5" />
                 </div>
                 <div>
-                  <h4 className={`text-sm font-bold ${rules.multivalidation ? 'text-blue-900' : 'text-slate-700'}`}>
+                  <h4 className="text-sm font-bold text-slate-700">
                     Multivalidación
                   </h4>
                   <p className="mt-1 text-xs text-slate-500">
-                    Exige múltiples factores y agrega pruebas a dichos equipos.
+                    No requiere configuración: se detecta sola por puerta, según qué
+                    lectores (LPR/Facial/QR) estén conectados a esa misma puerta. Una
+                    Cámara Facial sola ya cuenta doble (rostro + su QR integrado); si
+                    además hay un LPR en la misma puerta, pasa a triple.
                   </p>
                 </div>
-              </button>
-
-              {rules.multivalidation && (
-                <div className="mt-4 border-t border-blue-100 pt-3">
-                  <label className="mb-2 block text-xs font-bold text-blue-800">
-                    Selecciona los factores exigidos en la cadena:
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {MULTIVALIDATION_FACTORS.map(peripheral => {
-                      const isSelected = rules.multiFactors.includes(peripheral.id);
-
-                      return (
-                        <button
-                          key={peripheral.id}
-                          type="button"
-                          onClick={() => handleToggleMultifactor(peripheral.id)}
-                          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-all ${
-                            isSelected
-                              ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-600 ring-offset-1'
-                              : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
-                          }`}
-                        >
-                          {peripheral.icon}
-                          {peripheral.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="mt-2 text-[11px] text-slate-500">
-                    "QR integrado (Facial)" es el lector QR que ya trae incorporado el
-                    equipo Facial: úsalo cuando la cadena Rostro + QR se resuelve en un
-                    mismo equipo, sin agregar un Lector QR físico aparte.
-                  </p>
-                </div>
-              )}
+              </div>
             </div>
 
             <div className={`rounded-xl border-2 p-4 transition-colors ${

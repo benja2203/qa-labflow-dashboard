@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Camera, CheckCircle2, CreditCard, Pencil, Trash2 } from 'lucide-react';
+import { Camera, CheckCircle2, CreditCard, Lightbulb, Pencil, Trash2 } from 'lucide-react';
 import TaskRow from './TaskRow.jsx';
 import { TEST_STATUS } from '../constants/testStatus.js';
 
@@ -186,6 +186,12 @@ export default function DeviceCard({
                 <span className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
                   <CreditCard className="h-3 w-3" />
                   Lector de carnet
+                </span>
+              )}
+              {device.signalLightEnabled && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-yellow-50 px-2 py-0.5 text-xs font-semibold text-yellow-700">
+                  <Lightbulb className="h-3 w-3" />
+                  {device.signalLightRelay ? `Señalización: ${device.signalLightRelay}` : 'Señalización'}
                 </span>
               )}
             </div>

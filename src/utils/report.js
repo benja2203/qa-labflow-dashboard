@@ -179,9 +179,10 @@ export function hasChecklistFailuresWithoutComment(checklistByPhases, taskResult
 
 // Estos dispositivos no se instalan en una puerta puntual ni usan un relé
 // fijo (Desk/PDA operan sobre cualquier puerta de la comunidad, con el relé
-// de la puerta que corresponda en cada caso), así que no aplican a la ficha
-// técnica de puertas/relés y se excluyen para no mostrarlos como "sin asignar".
-const DOOR_RELAY_EXEMPT_TYPES = ['guardDesk', 'guardPda'];
+// de la puerta que corresponda en cada caso; Monitor solo muestra actividad
+// en tiempo real, no abre nada), así que no aplican a la ficha técnica de
+// puertas/relés y se excluyen para no mostrarlos como "sin asignar".
+const DOOR_RELAY_EXEMPT_TYPES = ['guardDesk', 'guardPda', 'monitor'];
 
 export function getTechnicalDeviceReport(selectedCommunity) {
   const unassignedDevices = [];
