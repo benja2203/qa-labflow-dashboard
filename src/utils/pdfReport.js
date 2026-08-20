@@ -41,6 +41,8 @@ const COLORS = {
   white: [255, 255, 255],
 };
 
+const SEVERITY_RANK = { 'NO APTO': 0, BLOQUEADO: 1, 'EN PROGRESO': 2, APTO: 3 };
+
 const OBSERVATION_STATUS_COLORS = {
   pending: COLORS.yellow600,
   in_review: COLORS.indigo600,
@@ -246,6 +248,35 @@ function createPdfWriter(doc) {
     });
 
     y += cardHeight + 5;
+  }
+
+  function addBarRow(label, value, maxValue, options = {}) {
+    const labelWidth = 45;
+    const valueWidth = 12;
+    const barHeight = 5;
+    const barX = PAGE.margin + labelWidth + 3;
+    const barWidth = contentWidth - labelWidth - valueWidth - 6;
+    const barColor = options.color || COLORS.red600;
+    const widthRatio = maxValue > 0 ? Math.max(0.04, value / maxValue) : 0;
+
+    ensurePage(barHeight + 4);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    setTextColor(doc, COLORS.slate700);
+    const truncatedLabel = doc.splitTextToSize(cleanText(label), labelWidth)[0];
+    doc.text(truncatedLabel, barX - 3, y + barHeight - 1, { align: 'right' });
+
+    setFillColor(doc, COLORS.slate100);
+    doc.roundedRect(barX, y, barWidth, barHeight, 1, 1, 'F');
+    setFillColor(doc, barColor);
+    doc.roundedRect(barX, y, barWidth * widthRatio, barHeight, 1, 1, 'F');
+
+    doc.setFontSize(8);
+    setTextColor(doc, COLORS.slate700);
+    doc.text(String(value), barX + barWidth + valueWidth - 2, y + barHeight - 1, { align: 'right' });
+
+    y += barHeight + 3;
   }
 
   function addDivider() {
@@ -469,6 +500,7 @@ function createPdfWriter(doc) {
     addParagraph,
     addLabelValue,
     addMetricRow,
+    addBarRow,
     addTask,
     addCoverageRow,
     addDoorCard,
@@ -902,46 +934,56 @@ export function downloadGeneralReportPdf({ report }) {
 
   writer.setY(headerHeight + 8);
 
-  writer.addSectionTitle('Resumen general');
+  writer.addSectionTitle('Resumen ejecutivo');
+  const noAptoLine = report.noAptoCount === 0
+    ? `De ${report.communitiesCount} proyecto(s) probados, ninguno quedo NO APTO.`
+    : `De ${report.communitiesCount} proyecto(s) probados, ${report.noAptoCount} quedaron NO APTO` +
+      (report.noAptoWithProcessObservationCount > 0
+        ? ` - y ${report.noAptoWithProcessObservationCount} de ${report.noAptoCount} tienen observaciones de instalacion no lista registradas, no solo fallas tecnicas.`
+        : '.');
+  writer.addParagraph(noAptoLine, { fontStyle: 'bold', color: COLORS.slate800, fontSize: 10 });
+  writer.addGap(2);
   writer.addMetricRow([
-    { value: String(report.communitiesCount), label: 'Comunidades' },
-    { value: String(report.totals.total), label: 'Pruebas totales' },
-    { value: String(report.totals.fail), label: 'Fail', color: COLORS.red600, fill: COLORS.red50 },
-    { value: String(report.totals.blocked), label: 'Blocked', color: COLORS.yellow600, fill: COLORS.yellow50 },
+    { value: String(report.communitiesCount), label: 'Proyectos' },
+    { value: `${report.approvalRate}%`, label: 'Aprobacion', color: COLORS.green600, fill: COLORS.green50 },
+    { value: String(report.deliveredUnderExceptionCount), label: 'Bajo excepcion', color: COLORS.orange600, fill: COLORS.orange50 },
+    { value: String(report.installationNotReadyCount), label: 'Obs. instalacion', color: COLORS.purple600, fill: COLORS.purple50 },
   ]);
 
-  writer.addSectionTitle('Estado final por comunidad');
+  writer.addSectionTitle('Instalacion no lista vs. falla tecnica real');
+  writer.addMetricRow([
+    { value: String(report.installationNotReadyCount), label: 'Observaciones de instalacion', color: COLORS.purple600, fill: COLORS.purple50 },
+    { value: String(report.technicalFailureCount), label: 'Fallas tecnicas confirmadas', color: COLORS.red600, fill: COLORS.red50 },
+  ]);
+
+  writer.addSectionTitle('Estado final por proyecto');
   writer.addMetricRow(
     Object.entries(report.statusDistribution).map(([status, count]) => ({
       value: String(count),
       label: status,
     }))
   );
-  if (report.deliveredUnderExceptionCount > 0) {
-    writer.addParagraph(
-      `${report.deliveredUnderExceptionCount} comunidad(es) se entregaron bajo excepción.`,
-      { color: COLORS.orange600, fontStyle: 'bold' }
-    );
+
+  if (report.installerBreakdown.length > 0) {
+    writer.addSectionTitle('Incidencias por instalador');
+    const maxInstallerIncidents = report.installerBreakdown.reduce((max, entry) => Math.max(max, entry.incidentCount), 0);
+    report.installerBreakdown.forEach(entry => {
+      writer.addBarRow(entry.name, entry.incidentCount, maxInstallerIncidents, { color: COLORS.red600 });
+    });
     writer.addGap(2);
   }
 
-  writer.addSectionTitle('Defectos por tipo de dispositivo/prueba');
-  if (report.deviceBreakdown.length === 0) {
-    writer.addParagraph('Sin datos todavía.');
+  writer.addSectionTitle('Defectos por tipo de dispositivo');
+  const defectiveDevices = report.deviceBreakdown.filter(device => (device.fail || 0) + (device.blocked || 0) > 0);
+  if (defectiveDevices.length === 0) {
+    writer.addParagraph('Sin defectos registrados por tipo de dispositivo todavia.');
   } else {
-    report.deviceBreakdown.forEach(device => {
-      writer.ensurePage(14);
-      writer.addParagraph(`${device.label} - ${device.total} pruebas`, {
-        fontStyle: 'bold',
-        color: COLORS.slate900,
-      });
-      writer.addParagraph(
-        `Fail: ${device.fail || 0}  |  Blocked: ${device.blocked || 0}  |  ${device.failRate}% con falla`,
-        { fontSize: 8.5, color: COLORS.slate500 }
-      );
-      writer.addGap(2);
+    const maxDeviceDefects = defectiveDevices.reduce((max, device) => Math.max(max, (device.fail || 0) + (device.blocked || 0)), 0);
+    defectiveDevices.forEach(device => {
+      writer.addBarRow(device.label, (device.fail || 0) + (device.blocked || 0), maxDeviceDefects, { color: COLORS.red600 });
     });
   }
+  writer.addGap(2);
 
   writer.addSectionTitle('Pruebas que más se repiten como Fail/Blocked');
   if (report.topFailingTests.length === 0) {
@@ -962,38 +1004,18 @@ export function downloadGeneralReportPdf({ report }) {
     });
   }
 
-  if (report.generalObservations.length > 0) {
-    writer.addSectionTitle('Observaciones generales consolidadas');
-    writer.addParagraph(
-      `${report.pendingObservationsCount} pendientes - ${report.inReviewObservationsCount} en revisión - ${report.resolvedObservationsCount} resueltas`,
-      { fontSize: 8.5, fontStyle: 'bold', color: COLORS.slate500 }
-    );
-    writer.addGap(2);
-    report.generalObservations.forEach((observation, index) => {
-      writer.ensurePage(20);
-      const status = resolveObservationStatus(observation);
-      writer.addParagraph(`${index + 1}. [${observation.communityName}] ${observation.title} (${OBSERVATION_STATUS[status].label})`, {
-        fontStyle: 'bold',
-        color: OBSERVATION_STATUS_COLORS[status],
-      });
-      writer.addParagraph(`Alcance: ${getObservationScopeLabels(observation.scope).join(', ')}`, {
-        fontSize: 7.5,
-        color: COLORS.slate500,
-      });
-      writer.addParagraph(observation.description, { fontSize: 8.5 });
-      writer.addGap(3);
-    });
-  }
-
-  writer.addSectionTitle('Detalle por comunidad');
-  report.communitySummaries.forEach(entry => {
+  writer.addSectionTitle('Detalle por proyecto - peor estado primero');
+  const sortedCommunitySummaries = [...report.communitySummaries].sort(
+    (a, b) => SEVERITY_RANK[a.finalLabStatus] - SEVERITY_RANK[b.finalLabStatus]
+  );
+  sortedCommunitySummaries.forEach(entry => {
     writer.ensurePage(14);
     writer.addParagraph(
       `${entry.name} - ${entry.finalLabStatus}${entry.deliveredUnderException ? ' (entregado bajo excepcion)' : ''}${entry.isClosed ? ' (cerrado)' : ''}`,
       { fontStyle: 'bold', color: COLORS.slate900 }
     );
     writer.addParagraph(
-      `${entry.summary.completed}/${entry.summary.total} evaluadas - Pass ${entry.summary.pass}, Fail ${entry.summary.fail}, Blocked ${entry.summary.blocked}, N/A ${entry.summary.na}, Pending ${entry.summary.pending}`,
+      `${entry.installerName ? `${entry.installerName} - ` : ''}${entry.summary.completed}/${entry.summary.total} evaluadas - Pass ${entry.summary.pass}, Fail ${entry.summary.fail}, Blocked ${entry.summary.blocked}, N/A ${entry.summary.na}, Pending ${entry.summary.pending}`,
       { fontSize: 8, color: COLORS.slate500 }
     );
     writer.addGap(2);

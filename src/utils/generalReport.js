@@ -1,14 +1,20 @@
 import { buildChecklistByPhases } from './checklist.js';
 import { createChecklistSummary, getFinalLabStatus, getTaskResult } from './report.js';
 import { resolveObservationStatus } from '../constants/observationStatus.js';
+import { PROCESS_SCOPE } from '../constants/observationScopes.js';
 
 function stripDoorContext(description) {
   return description.replace(/\s*\([^)]*\)$/, '').trim();
 }
 
+function isProcessObservation(observation) {
+  return Array.isArray(observation.scope) && observation.scope.includes(PROCESS_SCOPE.id);
+}
+
 export function buildGeneralReport(communities, taskResults, generalObservationsByCommunity, deliveryExceptionsByCommunity, closedProjectsByCommunity) {
   const deviceStatsById = new Map();
   const failureTextCounts = new Map();
+  const installerStatsByName = new Map();
   const communitySummaries = [];
   const allObservations = [];
 
@@ -16,6 +22,8 @@ export function buildGeneralReport(communities, taskResults, generalObservations
   const statusDistribution = { APTO: 0, 'NO APTO': 0, BLOQUEADO: 0, 'EN PROGRESO': 0 };
   let deliveredUnderExceptionCount = 0;
   let closedCount = 0;
+  let approvedCommunitiesCount = 0;
+  let evaluatedCommunitiesCount = 0;
 
   communities.forEach(community => {
     const closedProject = closedProjectsByCommunity?.[community.id];
@@ -40,16 +48,33 @@ export function buildGeneralReport(communities, taskResults, generalObservations
 
     if (summary.total > 0) {
       statusDistribution[finalLabStatus] = (statusDistribution[finalLabStatus] || 0) + 1;
+      evaluatedCommunitiesCount += 1;
+      if (finalLabStatus === 'APTO') approvedCommunitiesCount += 1;
+
+      const installerName = community.installerName?.trim() || 'Sin asignar';
+      const installerEntry = installerStatsByName.get(installerName) || {
+        name: installerName,
+        incidentCount: 0,
+        communitiesCount: 0,
+      };
+      installerEntry.incidentCount += summary.fail + summary.blocked;
+      installerEntry.communitiesCount += 1;
+      installerStatsByName.set(installerName, installerEntry);
     }
     if (deliveredUnderException) deliveredUnderExceptionCount += 1;
+
+    const communityObservations = generalObservationsByCommunity?.[community.id] || [];
+    const hasProcessObservation = communityObservations.some(isProcessObservation);
 
     communitySummaries.push({
       id: community.id,
       name: community.name,
+      installerName: community.installerName?.trim() || '',
       finalLabStatus,
       summary,
       deliveredUnderException,
       isClosed,
+      hasProcessObservation,
     });
 
     checklistByPhases.forEach(phase => {
@@ -85,7 +110,7 @@ export function buildGeneralReport(communities, taskResults, generalObservations
       });
     });
 
-    (generalObservationsByCommunity?.[community.id] || []).forEach(observation => {
+    communityObservations.forEach(observation => {
       allObservations.push({ ...observation, communityName: community.name });
     });
   });
@@ -105,16 +130,40 @@ export function buildGeneralReport(communities, taskResults, generalObservations
   const inReviewObservationsCount = allObservations.filter(observation => resolveObservationStatus(observation) === 'in_review').length;
   const resolvedObservationsCount = allObservations.filter(observation => resolveObservationStatus(observation) === 'resolved').length;
 
+  const processObservations = allObservations.filter(isProcessObservation);
+  const installationNotReadyCount = processObservations.length;
+  const technicalFailureCount = totals.fail + totals.blocked;
+  const approvalRate = evaluatedCommunitiesCount > 0
+    ? Math.round((approvedCommunitiesCount / evaluatedCommunitiesCount) * 100)
+    : 0;
+
+  const installerBreakdown = Array.from(installerStatsByName.values())
+    .filter(entry => entry.incidentCount > 0)
+    .sort((a, b) => b.incidentCount - a.incidentCount)
+    .slice(0, 8);
+
+  const noAptoCount = statusDistribution['NO APTO'] || 0;
+  const noAptoWithProcessObservationCount = communitySummaries.filter(
+    entry => entry.finalLabStatus === 'NO APTO' && entry.hasProcessObservation
+  ).length;
+
   return {
     communitiesCount: communities.length,
     totals,
     statusDistribution,
     deliveredUnderExceptionCount,
     closedCount,
+    approvalRate,
     communitySummaries,
     deviceBreakdown,
     topFailingTests,
+    installerBreakdown,
     generalObservations: allObservations,
+    processObservations,
+    installationNotReadyCount,
+    technicalFailureCount,
+    noAptoCount,
+    noAptoWithProcessObservationCount,
     pendingObservationsCount,
     inReviewObservationsCount,
     resolvedObservationsCount,
