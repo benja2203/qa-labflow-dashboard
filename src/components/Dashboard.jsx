@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building, CheckCircle2, Download, FileText, Lock, RotateCcw, Settings2, Unlock, Upload, Wrench } from 'lucide-react';
+import { Archive, Building, CheckCircle2, Download, FileText, Lock, RotateCcw, Settings2, Unlock, Upload, Wrench } from 'lucide-react';
 import { getFinalStatusClasses } from '../utils/report.js';
 import { filterChecklistByPhases, getAvailableDeviceTypes, getPhaseProgress } from '../utils/checklistFilters.js';
 import { PROCESS_SCOPE } from '../constants/observationScopes.js';
@@ -57,6 +57,7 @@ export default function Dashboard({
   closedAt,
   onCloseProject,
   onReopenProject,
+  onArchiveClosedProject,
 }) {
   const [showTechnicalSheet, setShowTechnicalSheet] = useState(false);
   const [statusFilter, setStatusFilter] = useState([]);
@@ -134,14 +135,25 @@ export default function Dashboard({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onReopenProject}
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-black text-white transition-colors hover:bg-white/20"
-          >
-            <Unlock className="h-4 w-4" />
-            Reabrir proyecto
-          </button>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onArchiveClosedProject}
+              title="Descarga todo el proyecto a un JSON y lo saca de este navegador para liberar espacio"
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-black text-white transition-colors hover:bg-white/20"
+            >
+              <Archive className="h-4 w-4" />
+              Archivar proyecto
+            </button>
+            <button
+              type="button"
+              onClick={onReopenProject}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-black text-white transition-colors hover:bg-white/20"
+            >
+              <Unlock className="h-4 w-4" />
+              Reabrir proyecto
+            </button>
+          </div>
         </section>
       )}
 

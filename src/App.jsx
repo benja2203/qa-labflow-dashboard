@@ -785,6 +785,73 @@ export default function App() {
     downloadJson(filename, payload);
   };
 
+  // Archivar = exportar TODO el proyecto (topología, resultados,
+  // observaciones, excepción de entrega, foto de cierre) a un JSON, y
+  // después sacarlo de localStorage para liberar espacio. Solo aplica a
+  // proyectos ya cerrados -- no tiene sentido archivar algo en progreso, y
+  // evita borrar por error algo que todavía se está probando.
+  const handleArchiveClosedProject = () => {
+    if (!selectedCommunity || !isCommunityClosed) return;
+
+    const confirmed = window.confirm(
+      `Esto va a descargar un JSON completo de "${selectedCommunity.name}" (topología, resultados, observaciones, excepción de entrega) y ELIMINARLO de este navegador para liberar espacio.\n\n` +
+      'El archivo descargado queda como el único respaldo de acá en adelante -- guardalo en un lugar seguro. Esta acción no se puede deshacer desde la app.\n\n' +
+      '¿Continuar?'
+    );
+    if (!confirmed) return;
+
+    const payload = buildReportPayload({
+      selectedCommunity,
+      checklistByPhases,
+      taskResults: effectiveTaskResults,
+      summary,
+      finalLabStatus,
+      generalObservations: currentGeneralObservations,
+      deliveryException: currentDeliveryException,
+      closedProject: currentClosedProject,
+      deviceNotes: effectiveDeviceNotes,
+    });
+
+    const filename = `qa-labflow-${sanitizeFilename(selectedCommunity.name)}-archivado-${new Date().toISOString().slice(0, 10)}.json`;
+    downloadJson(filename, payload);
+
+    const communityId = selectedCommunity.id;
+
+    setCommunities(prev => {
+      const nextCommunities = prev.filter(community => community.id !== communityId);
+      setSelectedCommunityId(nextCommunities[0]?.id || null);
+      return nextCommunities;
+    });
+
+    setTaskResults(prev => Object.fromEntries(
+      Object.entries(prev).filter(([taskId]) => !taskId.startsWith(`community-${communityId}-`))
+    ));
+
+    setDeviceNotes(prev => Object.fromEntries(
+      Object.entries(prev).filter(([deviceId]) => !deviceId.startsWith(`community-${communityId}-`))
+    ));
+
+    setGeneralObservations(prev => {
+      const next = { ...prev };
+      delete next[communityId];
+      return next;
+    });
+
+    setDeliveryExceptions(prev => {
+      const next = { ...prev };
+      delete next[communityId];
+      return next;
+    });
+
+    setClosedProjects(prev => {
+      const next = { ...prev };
+      delete next[communityId];
+      return next;
+    });
+
+    setCommentBoxes({});
+    setShowReport(false);
+  };
 
   const handleTriggerImport = () => {
     fileInputRef.current?.click();
@@ -961,6 +1028,7 @@ export default function App() {
               closedAt={currentClosedProject?.closedAt || null}
               onCloseProject={handleCloseProject}
               onReopenProject={handleReopenProject}
+              onArchiveClosedProject={handleArchiveClosedProject}
             />
           )}
         </div>

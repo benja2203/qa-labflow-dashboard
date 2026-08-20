@@ -1,5 +1,6 @@
 import React from 'react';
 import { BarChart3, Building, ChevronRight, Lock, Network, Plus, ShieldCheck, Trash2, Upload } from 'lucide-react';
+import StorageUsageIndicator from './StorageUsageIndicator.jsx';
 
 export default function Sidebar({
   communities,
@@ -108,6 +109,8 @@ export default function Sidebar({
           </div>
         )}
       </div>
+
+      <StorageUsageIndicator />
 
       <div className="border-t border-slate-100 p-4">
         <button
