@@ -113,8 +113,42 @@ function getDoorFactorSummary(factors) {
   return parts.join(' + ');
 }
 
-function createTaskId(communityId, baseId, testIndex) {
-  return `community-${communityId}-${baseId}-test-${testIndex}`;
+// Hash determinístico (FNV-1a 32 bits) del texto de la prueba. No es para
+// seguridad, es para que la ID de una prueba dependa de SU PROPIO texto y no
+// de la posición en el array — así insertar, reordenar o agregar pruebas
+// nuevas en cualquier lugar no corre los resultados ya guardados de las
+// demás pruebas de ese dispositivo (antes, con IDs posicionales, cualquier
+// cambio en el catálogo podía pegar un Pass viejo a una prueba distinta).
+function hashTestDescription(description) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < description.length; i += 1) {
+    hash ^= description.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function createTaskId(communityId, baseId, description, occurrenceIndex = 0) {
+  const suffix = occurrenceIndex > 0 ? `-${occurrenceIndex}` : '';
+  return `community-${communityId}-${baseId}-test-${hashTestDescription(description)}${suffix}`;
+}
+
+// Arma los `tasks` de un dispositivo a partir de sus descripciones, con IDs
+// estables por contenido. Si dos pruebas de un mismo dispositivo tuvieran
+// exactamente el mismo texto (caso borde, no debería pasar), se desambiguan
+// con un sufijo numérico para que nunca colisionen entre sí.
+function mapDescriptionsToTasks(communityId, baseId, descriptions, transformDescription) {
+  const seenCount = {};
+
+  return descriptions.map(rawDescription => {
+    const occurrenceIndex = seenCount[rawDescription] || 0;
+    seenCount[rawDescription] = occurrenceIndex + 1;
+
+    return {
+      id: createTaskId(communityId, baseId, rawDescription, occurrenceIndex),
+      description: transformDescription ? transformDescription(rawDescription) : rawDescription,
+    };
+  });
 }
 
 function initPhase(phases, phaseNumber, phaseName) {
@@ -395,16 +429,15 @@ export function buildChecklistByPhases(selectedCommunity) {
 
     initPhase(phases, hubCatalog.phase, hubCatalog.phaseName);
 
+    const controllerBaseId = `${node.id}-controller`;
     phases[hubCatalog.phase].devices.push({
       id: `community-${selectedCommunity.id}-${node.id}`,
+      rawBaseId: controllerBaseId,
       deviceName: `${hubCatalog.name} (${node.label})`,
       type: hubCatalog.id,
       typeName: hubCatalog.name,
       icon: hubCatalog.icon,
-      tasks: hubCatalog.tests.map((description, testIndex) => ({
-        id: createTaskId(selectedCommunity.id, `${node.id}-controller`, testIndex),
-        description,
-      })),
+      tasks: mapDescriptionsToTasks(selectedCommunity.id, controllerBaseId, hubCatalog.tests),
     });
 
     const doorFactors = computeDoorFactors(node);
@@ -438,6 +471,7 @@ export function buildChecklistByPhases(selectedCommunity) {
 
         phases[peripheralCatalog.phase].devices.push({
           id: `community-${selectedCommunity.id}-${baseId}`,
+          rawBaseId: baseId,
           deviceName: `${deviceDisplayName} [Conectado a: ${node.label}]`,
           type: peripheralCatalog.id,
           typeName: peripheralCatalog.name,
@@ -451,10 +485,12 @@ export function buildChecklistByPhases(selectedCommunity) {
           cardReaderEnabled: instance.cardReaderEnabled,
           signalLightEnabled: instance.signalLightEnabled,
           signalLightRelay: instance.signalLightRelay,
-          tasks: dynamicTests.map((description, testIndex) => ({
-            id: createTaskId(selectedCommunity.id, baseId, testIndex),
-            description: applyDoorContextToDescription(description, doorInfo, relayInfo),
-          })),
+          tasks: mapDescriptionsToTasks(
+            selectedCommunity.id,
+            baseId,
+            dynamicTests,
+            description => applyDoorContextToDescription(description, doorInfo, relayInfo)
+          ),
         });
       }
     });
@@ -471,16 +507,15 @@ export function buildChecklistByPhases(selectedCommunity) {
 
     initPhase(phases, moduleConfig.phase, moduleConfig.phaseName);
 
+    const moduleBaseId = `module-${moduleConfig.id}`;
     phases[moduleConfig.phase].devices.push({
       id: `community-${selectedCommunity.id}-module-${moduleConfig.id}`,
+      rawBaseId: moduleBaseId,
       deviceName: `${moduleConfig.name} (Módulo habilitado)`,
       type: moduleConfig.id,
       typeName: moduleConfig.name,
       icon: moduleConfig.icon,
-      tasks: moduleConfig.tests.map((description, testIndex) => ({
-        id: createTaskId(selectedCommunity.id, `module-${moduleConfig.id}`, testIndex),
-        description,
-      })),
+      tasks: mapDescriptionsToTasks(selectedCommunity.id, moduleBaseId, moduleConfig.tests),
     });
   });
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ClipboardCheck, Plus, Upload } from 'lucide-react';
 import { DEVICE_CATALOG, INITIAL_COMMUNITIES } from './data/deviceCatalog.jsx';
 import { DEFAULT_TASK_RESULT } from './constants/testStatus.js';
@@ -125,6 +125,44 @@ function normalizeCommunity(community) {
         .map(normalizePeripheralConfig),
     })),
   };
+}
+
+// Migración única: los IDs de prueba pasaron de ser posicionales
+// (...-test-0, ...-test-1) a derivarse del texto de cada prueba
+// (...-test-{hash}), para que insertar/reordenar/agregar pruebas en el
+// catálogo ya no le pegue el resultado guardado de una prueba a otra
+// distinta (bug real: al agregar pruebas mientras se estaba testeando, las
+// nuevas heredaban el Pass de la que antes ocupaba esa posición). Esto
+// remapea los taskResults ya guardados con el esquema viejo al nuevo, sin
+// pisar nada si ya existiera un resultado bajo el id nuevo.
+function migrateTaskResultsToStableIds(communities, taskResults) {
+  let migrated = taskResults;
+  let didMigrate = false;
+
+  communities.forEach(community => {
+    const checklistByPhases = buildChecklistByPhases(community);
+
+    checklistByPhases.forEach(phase => {
+      phase.devices.forEach(device => {
+        if (!device.rawBaseId) return;
+
+        device.tasks.forEach((task, index) => {
+          const legacyId = `community-${community.id}-${device.rawBaseId}-test-${index}`;
+          if (legacyId === task.id) return;
+          if (!(legacyId in taskResults)) return;
+          if (task.id in taskResults) return;
+
+          if (!didMigrate) {
+            migrated = { ...taskResults };
+            didMigrate = true;
+          }
+          migrated[task.id] = migrated[legacyId];
+        });
+      });
+    });
+  });
+
+  return { migrated, didMigrate };
 }
 
 function EmptyDashboard({ onCreateCommunity, onImportJson }) {
@@ -278,6 +316,7 @@ export default function App() {
   const [deliveryExceptions, setDeliveryExceptions] = useLocalStorageState('qa-labflow-delivery-exceptions', {});
   const [closedProjects, setClosedProjects] = useLocalStorageState('qa-labflow-closed-projects', {});
   const [deviceNotes, setDeviceNotes] = useLocalStorageState('qa-labflow-device-notes', {});
+  const [taskIdsMigrated, setTaskIdsMigrated] = useLocalStorageState('qa-labflow-taskid-migration-v1', false);
 
   const [commentBoxes, setCommentBoxes] = useState({});
   const [showReport, setShowReport] = useState(false);
@@ -289,6 +328,18 @@ export default function App() {
   const normalizedCommunities = useMemo(() => {
     return communities.map(normalizeCommunity);
   }, [communities]);
+
+  useEffect(() => {
+    if (taskIdsMigrated) return;
+
+    const { migrated, didMigrate } = migrateTaskResultsToStableIds(normalizedCommunities, taskResults);
+    if (didMigrate) setTaskResults(migrated);
+    setTaskIdsMigrated(true);
+    // Corre una única vez (gateado por taskIdsMigrated persistido en
+    // localStorage): no depende de normalizedCommunities/taskResults a
+    // propósito, para no volver a dispararse en cada cambio de datos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskIdsMigrated]);
 
   const selectedCommunity = useMemo(() => {
     return normalizedCommunities.find(community => community.id === selectedCommunityId) || normalizedCommunities[0] || null;
