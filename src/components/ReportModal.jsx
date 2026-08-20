@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Circle,
   ClipboardList,
+  Clock,
   Download,
   MapPin,
   Network,
@@ -18,7 +19,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
-import { resolveObservationScopeLabel } from '../constants/observationScopes.js';
+import { PROCESS_SCOPE, resolveObservationScopeLabel } from '../constants/observationScopes.js';
 import { OBSERVATION_STATUS, resolveObservationStatus } from '../constants/observationStatus.js';
 import { TEST_STATUS } from '../constants/testStatus.js';
 import {
@@ -150,6 +151,9 @@ export default function ReportModal({
   const [reportMode, setReportMode] = useState('compact');
 
   const issues = getReportIssues(checklistByPhases, taskResults, deviceNotes);
+  const processObservations = generalObservations.filter(observation => (
+    Array.isArray(observation.scope) && observation.scope.includes(PROCESS_SCOPE.id)
+  ));
   const fullChecklistResults = getFullReportTasks(checklistByPhases, taskResults);
   const coverageRows = getDeviceCoverageRows(fullChecklistResults);
   const technicalReport = getTechnicalDeviceReport(selectedCommunity);
@@ -246,6 +250,21 @@ export default function ReportModal({
                   </div>
                   <p className="font-semibold">Autorizado por: {deliveryException.authorizedBy}</p>
                   <p className="mt-1 whitespace-pre-wrap">Motivo: {deliveryException.reason}</p>
+                  {deliveryException.updatedAt && (
+                    <p className="mt-1 text-xs font-medium text-orange-700">
+                      Registrado: {formatUpdatedAt(deliveryException.updatedAt)}
+                    </p>
+                  )}
+                  {deliveryException.signatureDataUrl && (
+                    <div className="mt-2 flex items-center gap-3 rounded-lg border border-orange-200 bg-white p-2.5">
+                      <img
+                        src={deliveryException.signatureDataUrl}
+                        alt="Firma de quien autoriza"
+                        className="h-11 w-32 shrink-0 object-contain"
+                      />
+                      <p className="text-[11px] text-orange-700">Firma capturada al momento de la autorización.</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -309,6 +328,43 @@ export default function ReportModal({
                 </div>
               </section>
 
+              {processObservations.length > 0 && (
+                <section className="pdf-avoid-break mb-8">
+                  <div className="flex items-center gap-3 rounded-xl border border-purple-200 bg-purple-50 p-4">
+                    <div className="rounded-lg border border-purple-200 bg-white p-2 text-purple-600">
+                      <Wrench className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-black text-slate-800">Instalación no lista para QA</h4>
+                      <p className="text-xs font-medium text-slate-500">
+                        Observaciones de Proceso/Documentación — no son fallas de equipo
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-black text-purple-600">{processObservations.length}</div>
+                      <div className="text-[10px] font-bold uppercase text-slate-400">registradas</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {processObservations.map((observation, index) => (
+                      <div
+                        key={observation.id || index}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <span className="font-semibold text-slate-700">{observation.title}</span>
+                        {observation.createdAt && (
+                          <span className="flex items-center gap-1 text-xs font-medium text-slate-400">
+                            <Clock className="h-3 w-3" />
+                            {formatUpdatedAt(observation.createdAt)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {generalObservations.length > 0 && (
                 <section className="pdf-avoid-break mb-8">
                   <h3 className="mb-4 flex items-center gap-2 border-b-2 border-purple-200 pb-2 text-lg font-black text-slate-800">
@@ -333,6 +389,12 @@ export default function ReportModal({
                         </div>
                         <h4 className="mb-1 text-sm font-black text-slate-800">{observation.title}</h4>
                         <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">{observation.description}</p>
+                        {observation.createdAt && (
+                          <p className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                            <Clock className="h-3 w-3" />
+                            Registrada: {formatUpdatedAt(observation.createdAt)}
+                          </p>
+                        )}
                       </article>
                     ))}
                   </div>
@@ -371,8 +433,14 @@ export default function ReportModal({
                             Prueba: <span className="font-normal italic">{issue.taskDescription}</span>
                           </div>
                         )}
-                        <div className="mb-3">
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
                           <StatusBadge status={issue.status} />
+                          {issue.updatedAt && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+                              <Clock className="h-3 w-3" />
+                              {formatUpdatedAt(issue.updatedAt)}
+                            </span>
+                          )}
                         </div>
 
                         {issue.comment && (

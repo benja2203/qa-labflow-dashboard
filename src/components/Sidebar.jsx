@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, Building, ChevronRight, Lock, Network, Plus, Trash2, Upload } from 'lucide-react';
+import { BarChart3, Building, ChevronRight, Lock, Network, Plus, ShieldCheck, Trash2, Upload } from 'lucide-react';
 
 export default function Sidebar({
   communities,
@@ -11,6 +11,7 @@ export default function Sidebar({
   onImportJson,
   onShowGeneralReport,
   closedProjects,
+  onOpenBackupSettings,
 }) {
   return (
     <aside className="sticky top-0 z-10 flex h-auto w-full flex-col border-r border-slate-200 bg-white shadow-sm md:h-screen md:w-72">
@@ -106,6 +107,17 @@ export default function Sidebar({
             })}
           </div>
         )}
+      </div>
+
+      <div className="border-t border-slate-100 p-4">
+        <button
+          type="button"
+          onClick={onOpenBackupSettings}
+          className="flex w-full items-center gap-2 rounded-lg p-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100"
+        >
+          <ShieldCheck className="h-4 w-4" />
+          Respaldo externo de excepciones
+        </button>
       </div>
     </aside>
   );

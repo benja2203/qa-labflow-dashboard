@@ -52,6 +52,7 @@ export default function Dashboard({
   deliveryException,
   onSetDeliveryException,
   onClearDeliveryException,
+  onRetryDeliveryExceptionBackup,
   isClosed,
   closedAt,
   onCloseProject,
@@ -229,6 +230,7 @@ export default function Dashboard({
           deliveryException={deliveryException}
           onSetException={onSetDeliveryException}
           onClearException={onClearDeliveryException}
+          onRetryBackup={onRetryDeliveryExceptionBackup}
         />
 
         <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">

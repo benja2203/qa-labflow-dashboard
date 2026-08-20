@@ -20,6 +20,8 @@ import CommunityForm from './components/CommunityForm.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import ReportModal from './components/ReportModal.jsx';
 import GeneralReportView from './components/GeneralReportView.jsx';
+import BackupSettingsModal from './components/BackupSettingsModal.jsx';
+import { sendExceptionBackup } from './utils/externalBackup.js';
 
 
 
@@ -317,6 +319,8 @@ export default function App() {
   const [closedProjects, setClosedProjects] = useLocalStorageState('qa-labflow-closed-projects', {});
   const [deviceNotes, setDeviceNotes] = useLocalStorageState('qa-labflow-device-notes', {});
   const [taskIdsMigrated, setTaskIdsMigrated] = useLocalStorageState('qa-labflow-taskid-migration-v1', false);
+  const [backupWebhookUrl, setBackupWebhookUrl] = useLocalStorageState('qa-labflow-backup-webhook-url', '');
+  const [showBackupSettings, setShowBackupSettings] = useState(false);
 
   const [commentBoxes, setCommentBoxes] = useState({});
   const [showReport, setShowReport] = useState(false);
@@ -526,19 +530,59 @@ export default function App() {
     }));
   };
 
-  const handleSetDeliveryException = ({ authorizedBy, reason }) => {
-    if (!selectedCommunity) return;
+  const sendDeliveryExceptionBackup = async (communityId, exceptionRecord) => {
+    setDeliveryExceptions(prev => {
+      const current = prev[communityId];
+      if (!current) return prev;
+      return { ...prev, [communityId]: { ...current, backupStatus: 'sending' } };
+    });
 
-    setDeliveryExceptions(prev => ({
-      ...prev,
-      [selectedCommunity.id]: {
-        active: true,
-        authorizedBy,
-        reason,
-        createdAt: prev[selectedCommunity.id]?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-    }));
+    const result = await sendExceptionBackup(backupWebhookUrl, {
+      type: 'delivery_exception',
+      communityName: normalizedCommunities.find(c => c.id === communityId)?.name || '',
+      technicianName: normalizedCommunities.find(c => c.id === communityId)?.technicianName || '',
+      authorizedBy: exceptionRecord.authorizedBy,
+      reason: exceptionRecord.reason,
+      signatureDataUrl: exceptionRecord.signatureDataUrl,
+      registeredAt: exceptionRecord.updatedAt,
+    });
+
+    setDeliveryExceptions(prev => {
+      const current = prev[communityId];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [communityId]: {
+          ...current,
+          backupStatus: result.sent ? 'sent' : (result.reason === 'not-configured' ? 'not-configured' : 'failed'),
+          backupAttemptedAt: new Date().toISOString(),
+        },
+      };
+    });
+  };
+
+  const handleSetDeliveryException = ({ authorizedBy, reason, signatureDataUrl }) => {
+    if (!selectedCommunity) return;
+    const communityId = selectedCommunity.id;
+
+    const exceptionRecord = {
+      active: true,
+      authorizedBy,
+      reason,
+      signatureDataUrl: signatureDataUrl || '',
+      createdAt: deliveryExceptions[communityId]?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    setDeliveryExceptions(prev => ({ ...prev, [communityId]: exceptionRecord }));
+    sendDeliveryExceptionBackup(communityId, exceptionRecord);
+  };
+
+  const handleRetryDeliveryExceptionBackup = () => {
+    if (!selectedCommunity) return;
+    const current = deliveryExceptions[selectedCommunity.id];
+    if (!current) return;
+    sendDeliveryExceptionBackup(selectedCommunity.id, current);
   };
 
   const handleClearDeliveryException = () => {
@@ -848,6 +892,7 @@ export default function App() {
         onImportJson={handleTriggerImport}
         onShowGeneralReport={handleShowGeneralReport}
         closedProjects={closedProjects}
+        onOpenBackupSettings={() => setShowBackupSettings(true)}
       />
 
       <main className="h-screen flex-1 overflow-y-auto bg-slate-50/50 p-4 md:p-8">
@@ -911,6 +956,7 @@ export default function App() {
               deliveryException={currentDeliveryException}
               onSetDeliveryException={handleSetDeliveryException}
               onClearDeliveryException={handleClearDeliveryException}
+              onRetryDeliveryExceptionBackup={handleRetryDeliveryExceptionBackup}
               isClosed={isCommunityClosed}
               closedAt={currentClosedProject?.closedAt || null}
               onCloseProject={handleCloseProject}
@@ -940,6 +986,14 @@ export default function App() {
           closedProject={currentClosedProject}
           deviceNotes={effectiveDeviceNotes}
           onClose={() => setShowReport(false)}
+        />
+      )}
+
+      {showBackupSettings && (
+        <BackupSettingsModal
+          webhookUrl={backupWebhookUrl}
+          onSave={setBackupWebhookUrl}
+          onClose={() => setShowBackupSettings(false)}
         />
       )}
     </div>

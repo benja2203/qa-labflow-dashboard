@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
 import { TEST_STATUS } from '../constants/testStatus.js';
-import { resolveObservationScopeLabel } from '../constants/observationScopes.js';
+import { PROCESS_SCOPE, resolveObservationScopeLabel } from '../constants/observationScopes.js';
 import { OBSERVATION_STATUS, resolveObservationStatus } from '../constants/observationStatus.js';
 import {
   getApprovalSummaryText,
@@ -442,6 +442,27 @@ function createPdfWriter(doc) {
     y = nextY;
   }
 
+  function addImage(dataUrl, { width = 50, height = 18, label = '' } = {}) {
+    if (!dataUrl) return;
+
+    ensurePage(height + (label ? 7 : 3));
+
+    if (label) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      setTextColor(doc, COLORS.slate500);
+      doc.text(cleanText(label).toUpperCase(), PAGE.margin, y);
+      y += 4;
+    }
+
+    try {
+      doc.addImage(dataUrl, 'PNG', PAGE.margin, y, width, height);
+    } catch {
+      // Data URL inválida (no debería pasar, pero no vale la pena romper el PDF por esto).
+    }
+    y += height + 3;
+  }
+
   return {
     addGap,
     addSectionTitle,
@@ -453,6 +474,7 @@ function createPdfWriter(doc) {
     addDoorCard,
     addUnassignedDeviceRow,
     addFooterPages,
+    addImage,
     ensurePage,
     setY,
   };
@@ -585,6 +607,8 @@ export function downloadStructuredPdfReport({
     writer.addSectionTitle('Entregado bajo excepción');
     writer.addLabelValue('Autorizado por', deliveryException.authorizedBy);
     writer.addLabelValue('Motivo', deliveryException.reason);
+    writer.addLabelValue('Registrado', formatDateTime(deliveryException.updatedAt), { emptyText: 'Sin fecha' });
+    writer.addImage(deliveryException.signatureDataUrl, { width: 50, height: 18, label: 'Firma' });
     writer.addGap(4);
   }
 
@@ -638,6 +662,25 @@ export function downloadStructuredPdfReport({
   writer.addSectionTitle('Módulo de aprobación');
   writer.addParagraph(getApprovalSummaryText(summary, finalLabStatus), { fontStyle: 'bold' });
 
+  const processObservations = generalObservations.filter(observation => (
+    Array.isArray(observation.scope) && observation.scope.includes(PROCESS_SCOPE.id)
+  ));
+
+  if (processObservations.length > 0) {
+    writer.addSectionTitle('Instalación no lista para QA');
+    writer.addParagraph(
+      `${processObservations.length} observación(es) de Proceso/Documentación registradas — no son fallas de equipo.`,
+      { fontStyle: 'bold', color: COLORS.purple600 }
+    );
+    processObservations.forEach((observation, index) => {
+      writer.ensurePage(14);
+      writer.addParagraph(`${index + 1}. ${observation.title}`, { fontStyle: 'bold' });
+      writer.addLabelValue('Registrada', formatDateTime(observation.createdAt), { emptyText: 'Sin fecha' });
+      writer.addGap(2);
+    });
+    writer.addGap(3);
+  }
+
   if (generalObservations.length > 0) {
     writer.addSectionTitle('Observaciones generales (para mejora)');
     generalObservations.forEach((observation, index) => {
@@ -649,6 +692,7 @@ export function downloadStructuredPdfReport({
       });
       writer.addLabelValue('Alcance', getObservationScopeLabels(observation.scope).join(', '));
       writer.addLabelValue('Detalle', observation.description);
+      writer.addLabelValue('Registrada', formatDateTime(observation.createdAt), { emptyText: 'Sin fecha' });
       writer.addGap(3);
     });
   }
@@ -673,6 +717,7 @@ export function downloadStructuredPdfReport({
       if (!issue.isDeviceNote) {
         writer.addLabelValue('Evidencia', issue.evidence, { emptyText: 'Sin evidencia' });
       }
+      writer.addLabelValue('Registrado', formatDateTime(issue.updatedAt), { emptyText: 'Sin fecha' });
       writer.addGap(3);
     });
   }

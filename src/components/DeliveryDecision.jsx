@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { Pencil, ShieldAlert, Trash2 } from 'lucide-react';
+import { CheckCircle2, CloudOff, Loader2, Pencil, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react';
+import SignaturePad from './SignaturePad.jsx';
+
+const BACKUP_STATUS_CONFIG = {
+  sending: { icon: Loader2, spin: true, text: 'Enviando respaldo externo...', className: 'text-slate-500' },
+  sent: { icon: CheckCircle2, text: 'Respaldo externo enviado', className: 'text-green-600' },
+  failed: { icon: CloudOff, text: 'No se pudo enviar el respaldo externo — quedó guardado solo local', className: 'text-red-600' },
+  'not-configured': { icon: CloudOff, text: 'Respaldo externo no configurado (Sidebar → Respaldo externo de excepciones)', className: 'text-slate-400' },
+};
 
 function formatUpdatedAt(value) {
   if (!value) return '';
@@ -20,10 +28,13 @@ function formatUpdatedAt(value) {
 function ExceptionForm({ initialValues, onCancel, onSubmit }) {
   const [authorizedBy, setAuthorizedBy] = useState(initialValues?.authorizedBy || '');
   const [reason, setReason] = useState(initialValues?.reason || '');
+  const [signatureDataUrl, setSignatureDataUrl] = useState(initialValues?.signatureDataUrl || '');
+
+  const canSubmit = authorizedBy.trim() && reason.trim() && signatureDataUrl;
 
   const handleSubmit = () => {
-    if (!authorizedBy.trim() || !reason.trim()) return;
-    onSubmit({ authorizedBy: authorizedBy.trim(), reason: reason.trim() });
+    if (!canSubmit) return;
+    onSubmit({ authorizedBy: authorizedBy.trim(), reason: reason.trim(), signatureDataUrl });
   };
 
   return (
@@ -53,6 +64,13 @@ function ExceptionForm({ initialValues, onCancel, onSubmit }) {
         />
       </div>
 
+      <div>
+        <label className="mb-1.5 block text-[10px] font-black uppercase tracking-wider text-slate-500">
+          Firma de quien autoriza
+        </label>
+        <SignaturePad value={signatureDataUrl} onChange={setSignatureDataUrl} />
+      </div>
+
       <div className="flex justify-end gap-2">
         <button
           type="button"
@@ -64,7 +82,7 @@ function ExceptionForm({ initialValues, onCancel, onSubmit }) {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={!authorizedBy.trim() || !reason.trim()}
+          disabled={!canSubmit}
           className="rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-black text-white transition-colors hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Guardar excepción
@@ -74,7 +92,7 @@ function ExceptionForm({ initialValues, onCancel, onSubmit }) {
   );
 }
 
-export default function DeliveryDecision({ finalLabStatus, deliveryException, onSetException, onClearException }) {
+export default function DeliveryDecision({ finalLabStatus, deliveryException, onSetException, onClearException, onRetryBackup }) {
   const [isEditing, setIsEditing] = useState(false);
   const isExceptionActive = Boolean(deliveryException?.active);
 
@@ -99,11 +117,45 @@ export default function DeliveryDecision({ finalLabStatus, deliveryException, on
               <p className="mt-1 whitespace-pre-wrap text-sm leading-5 text-orange-900">
                 Motivo: {deliveryException.reason}
               </p>
+              {deliveryException.signatureDataUrl && (
+                <div className="mt-2 flex items-center gap-3 rounded-lg border border-orange-200 bg-white p-2.5">
+                  <img
+                    src={deliveryException.signatureDataUrl}
+                    alt="Firma de quien autoriza"
+                    className="h-11 w-32 shrink-0 object-contain"
+                  />
+                  <p className="text-[11px] text-orange-700">
+                    Firmado{deliveryException.updatedAt ? ` el ${formatUpdatedAt(deliveryException.updatedAt)}` : ''} desde este dispositivo.
+                  </p>
+                </div>
+              )}
               {deliveryException.updatedAt && (
                 <p className="mt-1 text-xs font-medium text-orange-700">
                   Registrado: {formatUpdatedAt(deliveryException.updatedAt)}
                 </p>
               )}
+              {deliveryException.backupStatus && (() => {
+                const config = BACKUP_STATUS_CONFIG[deliveryException.backupStatus];
+                if (!config) return null;
+                const Icon = config.icon;
+                const canRetry = ['failed', 'not-configured'].includes(deliveryException.backupStatus);
+                return (
+                  <div className={`mt-1.5 flex items-center gap-1.5 text-xs font-semibold ${config.className}`}>
+                    <Icon className={`h-3.5 w-3.5 ${config.spin ? 'animate-spin' : ''}`} />
+                    {config.text}
+                    {canRetry && onRetryBackup && (
+                      <button
+                        type="button"
+                        onClick={onRetryBackup}
+                        className="ml-1 inline-flex items-center gap-1 rounded-md border border-current px-1.5 py-0.5 text-[10px] font-black hover:bg-white"
+                      >
+                        <RefreshCw className="h-2.5 w-2.5" />
+                        Reintentar
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               <p className="mt-2 text-xs font-medium text-orange-700">
                 El estado técnico ({finalLabStatus}) no cambia: esto solo deja constancia de que se entregó igual, a pesar de pruebas pendientes/fallidas.
               </p>
