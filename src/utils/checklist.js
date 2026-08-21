@@ -93,26 +93,6 @@ function computeDoorFactors(node) {
   return doorFactors;
 }
 
-function getDoorFactorSummary(factors) {
-  const parts = [];
-  if (factors.hasLpr) parts.push(DEVICE_CATALOG.lpr?.name || 'LPR');
-
-  if (factors.hasFacial) {
-    const facialName = DEVICE_CATALOG.facial?.name || 'Facial';
-    parts.push(
-      factors.hasStandaloneQr
-        ? `${facialName} (con QR integrado) + ${DEVICE_CATALOG.qr?.name || 'QR'}`
-        : `${facialName} (con QR integrado)`
-    );
-  } else if (factors.hasStandaloneQr) {
-    parts.push(DEVICE_CATALOG.qr?.name || 'QR');
-  }
-
-  if (factors.hasStickerTag) parts.push(DEVICE_CATALOG.stickertag?.name || 'StickerTag');
-
-  return parts.join(' + ');
-}
-
 // Hash determinístico (FNV-1a 32 bits) del texto de la prueba. No es para
 // seguridad, es para que la ID de una prueba dependa de SU PROPIO texto y no
 // de la posición en el array — así insertar, reordenar o agregar pruebas
@@ -283,16 +263,13 @@ function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instanc
     const isMultivalidation = factorCount >= 2;
 
     if (isMultivalidation) {
-      const factorNames = getDoorFactorSummary(doorFactorsForThisDoor);
-
       // Capa 1: pruebas comunes a cualquier cadena de Multivalidación (doble
       // o triple, cualquier combinación de factores presentes en esta puerta).
       dynamicTests.push(
-        `[Multi Validación] Confirmar factores configurados en esta puerta: ${factorNames}.`,
         '[Multi Validación] Acceso con todos los factores correctos → ingreso concedido.',
         '[Multi Validación] Acceso con uno o más factores incorrectos/faltantes → acceso denegado.',
-        '[Multi Validación] Validación completa dentro del tiempo máximo configurado → ingreso concedido sin demoras anómalas.',
-        '[Multi Validación] Espera prolongada sin completar todos los factores (fuera del tiempo máximo configurado) → el sistema degrada a un flujo alternativo sin quedar trabado.',
+        '[Multi Validación] Completar todos los factores sin pausas → el equipo pasa de uno a otro sin demoras raras ni quedarse "pensando".',
+        '[Multi Validación] Completar solo el primer factor y no continuar con el resto (irse sin terminar la cadena) → el equipo vuelve solo a su estado normal, listo para la siguiente persona, sin quedar trabado esperando.',
         '[Multi Validación] Registro del evento consolidado (todos los factores bajo el mismo evento) visible en el sistema.'
       );
 
