@@ -284,16 +284,6 @@ function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instanc
         getMultivalidationFactorTests('qr', { integrated: true })
           .forEach(test => dynamicTests.push(`[Multi Validación] ${test}`));
       }
-
-      // Capa 3: cadena con LPR + Facial (triple, con QR propio o integrado).
-      // Lo único garantizado por diseño es que LPR se valida primero
-      // (identifica el vehículo antes de pedir el resto); el orden entre
-      // Facial y QR no está fijo.
-      if (hasLpr && hasFacial) {
-        dynamicTests.push(
-          '[Multi Validación] LPR se valida primero en la cadena: si no coincide o no habilita el paso, el acceso se deniega sin llegar a solicitar Facial ni QR.'
-        );
-      }
     }
   }
 
