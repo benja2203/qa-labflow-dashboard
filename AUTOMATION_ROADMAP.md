@@ -70,11 +70,27 @@ la sección anterior quedaron así — ya no son tres incógnitas iguales:
    el health check no autenticado que hace hoy).
 
 2. **Estado online por dispositivo individual (QR, cámara, antena
-   StickerTag) — ❌ no existe.** Confirmado: hay forma de saber si un
-   *controlador* está online, pero no de un periférico individual. No es
-   que falte documentación, es que no está construido. Esta prueba puntual
-   ("lector encendido y conectado") **sale del alcance de automatización
-   por ahora** — se sigue verificando a mano hasta que exista esa señal.
+   StickerTag) — ❌ no existe un endpoint dedicado, pero no hace falta
+   pedir uno.** Confirmado: hay forma de saber si un *controlador* está
+   online, pero no de un periférico individual vía un endpoint de
+   "ping"/estado. Búsqueda alternativa: hay un campo `status` en la tabla
+   `device` de la BD local del controlador (ver Confluence "Checklist paso
+   a producción"), pero es un chequeo de que el dispositivo quedó bien
+   *aprovisionado*, no una señal de online/offline en tiempo real, y se
+   consulta por SQL directo, no por API — no sirve para esto.
+
+   **Mejor enfoque, propuesto por el usuario: inferir el estado por el
+   efecto colateral de la prueba funcional real (③), sin pedirle nada
+   nuevo a desarrollo.** Una vez que exista el endpoint de "simular
+   lectura" (③) para un dispositivo, ese mismo llamado ya revela si está
+   online: si responde con una decisión de negocio (concedido/denegado/
+   código de rechazo), el dispositivo está vivo — la lectura tuvo que
+   llegar hasta él y volver; si da timeout o un error de "no
+   responde"/"inalcanzable", está offline. Esto colapsa la pregunta ② en
+   la ③: no es una prueba aparte, es una lectura del resultado que la
+   prueba de acceso ya te da gratis. Vive enteramente en `automation/`
+   (lógica de interpretación de la respuesta), cero trabajo adicional para
+   el equipo de desarrollo.
 
 3. **Simular un evento de lectura por API — 🟡 hay precedente real, pero
    acotado.** Encontré el contrato exacto en Confluence
@@ -115,9 +131,11 @@ la sección anterior quedaron así — ya no son tres incógnitas iguales:
 3. Preguntar puntualmente si existe un endpoint de "simular lectura +
    resultado" para el control de acceso general (no Park) — con el
    precedente de `ParkBridgeServer` como referencia concreta de qué pedir.
-4. Dejar la prueba "dispositivo individual online" fuera de automatización
-   hasta que desarrollo construya esa señal — no es un bloqueo temporal,
-   es una feature que no existe.
+   Es la **única** pregunta que sigue realmente pendiente de desarrollo.
+4. ~~Estado online de dispositivo individual como pregunta aparte~~ — ya
+   no es una pregunta a desarrollo: se infiere del resultado de (3) (ver
+   sección anterior). Cuando (3) esté resuelto, esto sale gratis, no
+   requiere ningún trabajo adicional.
 5. Recién con (3) resuelto, decidir si conviene que `automation/` alimente
    resultados de vuelta a QA LabFlow — no construir esa integración antes
    de tener checks reales que valga la pena inyectar.
