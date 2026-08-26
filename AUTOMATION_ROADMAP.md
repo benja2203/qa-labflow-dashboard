@@ -59,18 +59,65 @@ así que en teoría son las más simples de automatizar de todo el catálogo una
 vez que se resuelva el auth de la API — no dependen de hardware físico en
 absoluto, son puramente backend.
 
+## Actualización (26-ago-2026): estado real de las 3 preguntas bloqueantes
+
+Después de consultar y de buscar en Confluence/Jira, las tres preguntas de
+la sección anterior quedaron así — ya no son tres incógnitas iguales:
+
+1. **Auth contra la API de Certificación — ✅ resuelto.** Existe un
+   endpoint para autenticarse en un ambiente específico y es conseguible.
+   Con esto `automation/` puede empezar a llamar la API de verdad (no solo
+   el health check no autenticado que hace hoy).
+
+2. **Estado online por dispositivo individual (QR, cámara, antena
+   StickerTag) — ❌ no existe.** Confirmado: hay forma de saber si un
+   *controlador* está online, pero no de un periférico individual. No es
+   que falte documentación, es que no está construido. Esta prueba puntual
+   ("lector encendido y conectado") **sale del alcance de automatización
+   por ahora** — se sigue verificando a mano hasta que exista esa señal.
+
+3. **Simular un evento de lectura por API — 🟡 hay precedente real, pero
+   acotado.** Encontré el contrato exacto en Confluence
+   ("Unificación Smartki Park: Convenio + Transiente — Puente
+   multi-método", página 924155905): un servicio nuevo (`ParkBridgeServer`)
+   expone `POST /bridge/api/v1/validate/lpr` (acepta patente + imagen en
+   base64 opcional), `/validate/qr`, `/validate/nfc` y `/validate/sticker`,
+   todos devolviendo `{status, code, message}` — exactamente el patrón
+   "inyectar una lectura, leer el resultado" que hace falta.
+
+   **Importante — esto es de Smartki Park (estacionamientos), no del
+   control de acceso de edificios/comunidades que testeás vos:**
+   - Es parte de un proyecto nuevo para unificar Smartki Park Convenio y
+     Transiente, **en desarrollo activo ahora mismo** (arrancó 22-jul-2026,
+     LPR y QR se programaron primero, NFC y StickerTag se están
+     construyendo la semana del 27-ago al 03-sep-2026, desarrollo completo
+     recién el 04-sep-2026, QA hasta el 30-sep-2026, piloto en producción
+     el 06-oct-2026).
+   - El endpoint valida contra la lógica de "convenio" de un
+     estacionamiento (vigencia, blacklist, cupos), no contra el control de
+     acceso general de una comunidad residencial/edificio.
+   - No confirma que exista (o vaya a existir) un endpoint equivalente
+     para el catálogo de periféricos de `deviceCatalog.jsx` (QR/StickerTag/
+     LPR/Facial de acceso general).
+
+   Sí confirma algo valioso: el patrón "endpoint que recibe una lectura
+   simulada y devuelve la decisión" **es un patrón que Smartki ya usa y
+   sabe construir** — no es una idea rara. La pregunta puntual que falta:
+   ¿existe o se puede pedir un endpoint equivalente para el flujo de acceso
+   general (no parking)?
+
 ## Qué sigue
 
-1. Confirmar con desarrollo el flujo de auth de la API de Certificación
-   (bloquea todo lo 🟡).
-2. Empezar por **Invitaciones**: es 100% API, sin hardware de por medio —
-   el primer caso 🟡 real que se puede pasar a 🟢 sin depender de un
-   endpoint nuevo por crear.
-3. En paralelo, pedir a desarrollo la spec de "simular evento de
-   lectura + leer resultado" para un periférico (probablemente QR, es el
-   más simple) — eso desbloquea todo el bloque de periféricos de acceso.
-4. Recién ahí decidir si conviene que `automation/` alimente resultados de
-   vuelta a QA LabFlow (ej. pre-marcar una prueba como Pass si el chequeo
-   automático dio OK, dejando que el técnico solo confirme/corrija) — no
-   construir esa integración antes de tener checks reales que valga la pena
-   inyectar.
+1. ~~Confirmar con desarrollo el flujo de auth~~ — resuelto, conseguir la
+   credencial y cargarla en `automation/.env`.
+2. Empezar por **Invitaciones**: sigue siendo el candidato más simple —
+   100% API, sin hardware ni endpoints nuevos de por medio.
+3. Preguntar puntualmente si existe un endpoint de "simular lectura +
+   resultado" para el control de acceso general (no Park) — con el
+   precedente de `ParkBridgeServer` como referencia concreta de qué pedir.
+4. Dejar la prueba "dispositivo individual online" fuera de automatización
+   hasta que desarrollo construya esa señal — no es un bloqueo temporal,
+   es una feature que no existe.
+5. Recién con (3) resuelto, decidir si conviene que `automation/` alimente
+   resultados de vuelta a QA LabFlow — no construir esa integración antes
+   de tener checks reales que valga la pena inyectar.
