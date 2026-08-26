@@ -1,0 +1,13 @@
+{
+  "name": "qa-labflow-automation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Servicio separado para automatizar pruebas de hardware Smartki contra el entorno de Certificación. No forma parte de la SPA (que sigue sin backend).",
+  "type": "module",
+  "scripts": {
+    "check:env": "node src/runEnvironmentHealthCheck.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  }
+}
