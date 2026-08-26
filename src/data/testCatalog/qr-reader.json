@@ -1,0 +1,143 @@
+{
+  "device": "qr",
+  "name": "Lector QR",
+  "description": "Lector de códigos QR para control de acceso",
+  "tests": [
+    {
+      "id": "qr-001",
+      "title": "Lectores QR encendidos y conectados al controlador",
+      "description": "Verificar que los lectores QR estén encendidos, visibles y conectados",
+      "category": "CRITICAL",
+      "automatable": true,
+      "tags": ["basic", "smoke", "connectivity", "hardware"],
+      "estimatedTime": 3,
+      "dependencies": [],
+      "acceptance": [
+        "LED indicador visible/encendido",
+        "Controlador detecta el lector",
+        "Dashboard muestra lector online"
+      ]
+    },
+    {
+      "id": "qr-002",
+      "title": "Lectura de QR válido concede acceso",
+      "description": "Probar que un QR válido registrado en el sistema abre la puerta/barrera",
+      "category": "CORE",
+      "automatable": true,
+      "tags": ["happy-path", "access", "core", "basic"],
+      "estimatedTime": 5,
+      "dependencies": ["qr-001"],
+      "acceptance": [
+        "QR se escanea correctamente",
+        "Sistema verifica identidad",
+        "Acceso es concedido",
+        "Usuario ve confirmación"
+      ]
+    },
+    {
+      "id": "qr-003",
+      "title": "Se activa relé correspondiente al acceso QR",
+      "description": "Verificar que al conceder acceso por QR, el relé se activa correctamente",
+      "category": "CORE",
+      "automatable": true,
+      "tags": ["relay-activation", "core", "hardware"],
+      "estimatedTime": 3,
+      "dependencies": ["qr-002"],
+      "acceptance": [
+        "Relé se activa inmediatamente",
+        "Duración de activación es correcta",
+        "Puerta abre/cierra según configuración"
+      ]
+    },
+    {
+      "id": "qr-004",
+      "title": "Intento de acceso con screenshot del QR rechazado",
+      "description": "Probar que un screenshot de un QR válido es rechazado por seguridad",
+      "category": "CORE",
+      "automatable": true,
+      "tags": ["security", "core", "attack-prevention"],
+      "estimatedTime": 5,
+      "dependencies": ["qr-001"],
+      "acceptance": [
+        "Screenshot es detectado",
+        "Acceso es rechazado",
+        "Evento es registrado como intento fallido"
+      ]
+    },
+    {
+      "id": "qr-005",
+      "title": "QR inválido rechazado",
+      "description": "Probar que un código QR no registrado en el sistema es rechazado",
+      "category": "CORE",
+      "automatable": false,
+      "tags": ["validation", "core", "security"],
+      "estimatedTime": 3,
+      "dependencies": ["qr-001"],
+      "acceptance": [
+        "QR se escanea pero es rechazado",
+        "Usuario ve mensaje de acceso denegado",
+        "Evento registrado como intento no autorizado"
+      ]
+    },
+    {
+      "id": "qr-006",
+      "title": "QR vencido rechazado",
+      "description": "Probar que un QR cuya fecha de validez ha expirado es rechazado",
+      "category": "CORE",
+      "automatable": false,
+      "tags": ["validation", "core", "time-based", "expiration"],
+      "estimatedTime": 3,
+      "dependencies": ["qr-001"],
+      "acceptance": [
+        "QR vencido es detectado",
+        "Acceso es rechazado",
+        "Evento registrado con motivo 'expirado'"
+      ]
+    },
+    {
+      "id": "qr-007",
+      "title": "QR funciona desde pantalla con brillo bajo",
+      "description": "Caso de borde: lectura de QR válido desde pantalla de celular con brillo bajo",
+      "category": "EXTENDED",
+      "automatable": false,
+      "tags": ["edge-case", "manual-only", "environmental", "usability"],
+      "estimatedTime": 10,
+      "dependencies": ["qr-002"],
+      "acceptance": [
+        "QR es legible con brillo mínimo",
+        "Lector captura código correctamente",
+        "Acceso es concedido"
+      ]
+    },
+    {
+      "id": "qr-008",
+      "title": "Feedback del lector QR funciona (sonido/LED)",
+      "description": "Verificar que el lector emite feedback según configuración (sonido, parpadeo, LED)",
+      "category": "EXTENDED",
+      "automatable": false,
+      "tags": ["ux", "feedback", "manual-only"],
+      "estimatedTime": 5,
+      "dependencies": ["qr-002"],
+      "acceptance": [
+        "Sonido emitido cuando se escanea (si está habilitado)",
+        "LED parpadea o cambia color según resultado",
+        "Feedback es claro y consistente"
+      ]
+    },
+    {
+      "id": "qr-009",
+      "title": "Evento registrado en aplicación y dashboard",
+      "description": "Verificar que cada lectura de QR queda registrada en el sistema",
+      "category": "CORE",
+      "automatable": true,
+      "tags": ["logging", "audit", "core"],
+      "estimatedTime": 5,
+      "dependencies": ["qr-002"],
+      "acceptance": [
+        "Evento aparece en activity log",
+        "Timestamp es correcto",
+        "Usuario/dispositivo identificado correctamente"
+      ]
+    }
+  ]
+}

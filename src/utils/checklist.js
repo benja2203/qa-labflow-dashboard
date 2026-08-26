@@ -6,6 +6,12 @@ import {
   getRelaysLabel,
   getRelaySourceLabel,
 } from '../constants/accessConfig.js';
+import {
+  getBaseTestsForDevice,
+  getTestsForSuite,
+  TEST_SUITES,
+} from '../data/testCatalog/index.js';
+import { buildDynamicTests as buildDynamicTestsFromBuilder } from './dynamicTestsBuilder.js';
 
 const GUARD_DEVICES = ['guardDesk', 'guardPda'];
 const ACCESS_DEVICES = ['qr', 'stickertag', 'lpr', 'facial', ...GUARD_DEVICES];
@@ -24,111 +30,56 @@ function initPhase(phases, phaseNumber, phaseName) {
   }
 }
 
+/**
+ * Obtener pruebas base para un dispositivo
+ * Primero intenta cargar del nuevo catálogo JSON
+ * Si no existe, fallback a DEVICE_CATALOG (backward compatibility)
+ */
+function getBaseTests(deviceType) {
+  const newCatalogTests = getBaseTestsForDevice(deviceType);
+  if (newCatalogTests.length > 0) {
+    return newCatalogTests;
+  }
+  // Fallback a catálogo antiguo
+  const catalogEntry = DEVICE_CATALOG[deviceType];
+  return catalogEntry?.tests || [];
+}
+
+/**
+ * Convertir pruebas del nuevo formato (objetos) al formato antiguo (strings)
+ * para backward compatibility
+ */
+function convertTestObjectsToStrings(tests) {
+  return tests.map(test => {
+    if (typeof test === 'string') {
+      return test; // Ya es string (formato antiguo)
+    }
+    // Es un objeto del nuevo catálogo, extraer título
+    return test.title || test.description || '';
+  });
+}
+
+/**
+ * Wrapper que combina pruebas base + dinámicas
+ * Maneja tanto el nuevo formato como el antiguo
+ */
 function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instance) {
-  const dynamicTests = [...baseTests];
-  const rules = selectedCommunity?.rules || {};
-  const enabledModules = Array.isArray(selectedCommunity?.modules) ? selectedCommunity.modules : [];
+  // Primero agregar las dinámicas del nuevo sistema
+  const dynamicTestObjects = buildDynamicTestsFromBuilder(
+    selectedCommunity,
+    peripheralType,
+    [], // pasar array vacío, la lógica construye desde cero
+    instance
+  );
 
-  const antipassbackDoorIds = Array.isArray(rules.antipassbackDoorIds) ? rules.antipassbackDoorIds : [];
-  const doorHasAntipassback = rules.antipassback &&
-    instance?.doorId &&
-    antipassbackDoorIds.includes(instance.doorId);
+  // Convertir a strings para compatibilidad
+  const dynamicTestStrings = convertTestObjectsToStrings(dynamicTestObjects);
 
-  if (doorHasAntipassback && ACCESS_DEVICES.includes(peripheralType)) {
-    const direction = instance?.direction || '';
-    const handlesEntry = direction !== 'salida';
+  // Convertir baseTests si son objetos
+  const baseTestStrings = convertTestObjectsToStrings(baseTests);
 
-    if (handlesEntry) {
-      dynamicTests.push(
-        '[Anti-Passback] Intento de doble entrada sin salida previa → acceso denegado.',
-        '[Anti-Passback] Flujo correcto entrada → salida → entrada funciona sin problemas.'
-      );
-    } else {
-      dynamicTests.push(
-        '[Anti-Passback] Verificar que la salida siempre es permitida (Anti-Passback no debe bloquear el egreso).'
-      );
-    }
-    dynamicTests.push(
-      '[Anti-Passback] Registro de evento Anti-Passback visible en logs/eventos.'
-    );
-  }
-
-  const cancelInvitationDoorIds = Array.isArray(rules.cancelInvitationDoorIds) ? rules.cancelInvitationDoorIds : [];
-  const doorHasCancelInvitation = rules.cancelInvitation &&
-    instance?.doorId &&
-    cancelInvitationDoorIds.includes(instance.doorId);
-  const isTemporaryCredentialDevice = GUARD_DEVICES.includes(peripheralType) ||
-    (['qr', 'facial'].includes(peripheralType) && (enabledModules.includes('invitaciones') || enabledModules.includes('qrcarnet')));
-
-  if (doorHasCancelInvitation && isTemporaryCredentialDevice) {
-    const direction = instance?.direction || '';
-    const handlesEntry = direction !== 'salida';
-
-    if (handlesEntry) {
-      dynamicTests.push(
-        '[Cancelar Invitación] Ingreso con visita/invitación/carnet válido → acceso concedido y la credencial queda invalidada para un nuevo ingreso.',
-        '[Cancelar Invitación] Reintento de ingreso con la misma visita/invitación/carnet ya utilizada → acceso denegado.'
-      );
-    } else {
-      dynamicTests.push(
-        '[Cancelar Invitación] Verificar que la salida siempre es permitida (Cancelar Invitación no debe bloquear el egreso).'
-      );
-    }
-    dynamicTests.push(
-      '[Cancelar Invitación] Registro del evento de cancelación de la credencial visible en logs/eventos.'
-    );
-  }
-
-  if (rules.multivalidation && rules.multiFactors?.includes(peripheralType)) {
-    const factorNames = rules.multiFactors
-      .map(id => DEVICE_CATALOG[id]?.name)
-      .filter(Boolean)
-      .join(' + ');
-
-    dynamicTests.push(
-      `[Multi Validación] Confirmar factores configurados: ${factorNames}.`,
-      '[Multi Validación] Acceso con todos los factores correctos → ingreso concedido.',
-      '[Multi Validación] Acceso con solo uno de los factores → acceso denegado.',
-      '[Multi Validación] Tiempo de espera entre validaciones respetado.',
-      '[Multi Validación] Registro del evento multi-validación en el sistema.'
-    );
-  }
-
-  if (instance?.cameraEnabled && CAMERA_CAPABLE_TYPES.includes(peripheralType)) {
-    const camRef = instance.cameraIp ? ` (${instance.cameraIp})` : '';
-    dynamicTests.push(
-      `[Cámara IP${camRef}] Verificar que la cámara captura imagen al accionar el dispositivo.`,
-      `[Cámara IP${camRef}] Verificar que la imagen queda registrada y visible en el sistema.`
-    );
-  }
-
-  if (instance?.cardReaderEnabled && CARD_READER_CAPABLE_TYPES.includes(peripheralType)) {
-    dynamicTests.push(
-      '[Lector de Carnet] Deslizar el carnet en el lector externo autocompleta correctamente los datos de la visita.',
-      '[Lector de Carnet] Carnet no reconocido o dañado → el sistema permite completar los datos manualmente sin bloquear el registro.'
-    );
-  }
-
-  if (peripheralType === 'qr' || peripheralType === 'facial') {
-    if (enabledModules.includes('qrcarnet')) {
-      dynamicTests.push(
-        '[Carnet] Carnet reconocido correctamente por este lector.',
-        '[Carnet] QR de usuario no registrado o eliminado → acceso denegado en este lector.',
-        '[Carnet] QR carnet de usuario registrado → acceso concedido en este lector.',
-        '[Carnet] Registro del evento de acceso por carnet visible en el sistema.'
-      );
-    }
-
-    if (enabledModules.includes('invitaciones')) {
-      dynamicTests.push(
-        '[Invitaciones] Invitación válida presentada en este lector → acceso concedido.',
-        '[Invitaciones] Invitación fuera de fecha/hora presentada en este lector → acceso denegado.',
-        '[Invitaciones] Registro del evento de acceso por invitación visible en el sistema.'
-      );
-    }
-  }
-
-  return dynamicTests;
+  // Combinar todas las pruebas
+  return [...baseTestStrings, ...dynamicTestStrings];
 }
 
 function getPeripheralInstance(peripheralConfig, index) {
@@ -223,7 +174,14 @@ function getEnabledModuleIds(selectedCommunity) {
   return [];
 }
 
-export function buildChecklistByPhases(selectedCommunity) {
+/**
+ * Construir checklist por fases
+ * @param {Object} selectedCommunity - Comunidad seleccionada
+ * @param {string} testSuiteType - Tipo de suite (SMOKE, STANDARD, COMPREHENSIVE)
+ *                                  Si no se proporciona, genera TODAS las pruebas (backward compatible)
+ * @returns {Array} Array de fases con dispositivos y pruebas
+ */
+export function buildChecklistByPhases(selectedCommunity, testSuiteType = 'STANDARD') {
   if (!selectedCommunity?.nodes?.length) return [];
 
   const phases = {};
@@ -234,16 +192,28 @@ export function buildChecklistByPhases(selectedCommunity) {
 
     initPhase(phases, hubCatalog.phase, hubCatalog.phaseName);
 
+    // Obtener pruebas para el controller
+    // Si existe en nuevo catálogo y se especifica suite, filtrar por suite
+    let controllerTests = getBaseTests('controller');
+    if (testSuiteType && testSuiteType !== 'ALL' && controllerTests.length > 0 && controllerTests[0]?.category) {
+      // Son objetos del nuevo catálogo, filtrar por suite
+      const filteredTests = getTestsForSuite('controller', testSuiteType);
+      controllerTests = filteredTests.length > 0 ? filteredTests : controllerTests;
+    }
+
     phases[hubCatalog.phase].devices.push({
       id: `community-${selectedCommunity.id}-${node.id}`,
       deviceName: `${hubCatalog.name} (${node.label})`,
       type: hubCatalog.id,
       typeName: hubCatalog.name,
       icon: hubCatalog.icon,
-      tasks: hubCatalog.tests.map((description, testIndex) => ({
-        id: createTaskId(selectedCommunity.id, `${node.id}-controller`, testIndex),
-        description,
-      })),
+      tasks: controllerTests.map((testData, testIndex) => {
+        const description = typeof testData === 'string' ? testData : testData.title || '';
+        return {
+          id: createTaskId(selectedCommunity.id, `${node.id}-controller`, testIndex),
+          description,
+        };
+      }),
     });
 
     (node.peripherals || []).forEach(peripheralConfig => {
@@ -256,12 +226,23 @@ export function buildChecklistByPhases(selectedCommunity) {
 
       for (let index = 0; index < qty; index += 1) {
         const instance = getPeripheralInstance(peripheralConfig, index);
-        const dynamicTests = buildDynamicTests(
+
+        // Obtener pruebas base - preferir nuevo catálogo si existe
+        let baseTests = getBaseTests(peripheralConfig.type);
+        if (testSuiteType && testSuiteType !== 'ALL' && baseTests.length > 0 && baseTests[0]?.category) {
+          // Son objetos del nuevo catálogo, filtrar por suite
+          const filteredTests = getTestsForSuite(peripheralConfig.type, testSuiteType);
+          baseTests = filteredTests.length > 0 ? filteredTests : baseTests;
+        }
+
+        // Agregar pruebas dinámicas
+        const allTests = buildDynamicTests(
           selectedCommunity,
           peripheralConfig.type,
-          peripheralCatalog.tests,
+          baseTests,
           instance
         );
+
         const baseId = `${node.id}-${peripheralConfig.type}-${instance.id}`;
         const deviceDisplayName = getPeripheralDisplayName(
           peripheralCatalog,
@@ -285,7 +266,7 @@ export function buildChecklistByPhases(selectedCommunity) {
           cameraEnabled: instance.cameraEnabled,
           cameraIp: instance.cameraIp,
           cardReaderEnabled: instance.cardReaderEnabled,
-          tasks: dynamicTests.map((description, testIndex) => ({
+          tasks: allTests.map((description, testIndex) => ({
             id: createTaskId(selectedCommunity.id, baseId, testIndex),
             description: applyDoorContextToDescription(description, doorInfo, relayInfo),
           })),

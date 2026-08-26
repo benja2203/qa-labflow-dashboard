@@ -1,0 +1,78 @@
+{
+  "device": "controller",
+  "name": "Controlador",
+  "description": "Centro de operaciones / Controlador principal",
+  "tests": [
+    {
+      "id": "ctrl-001",
+      "title": "Equipo encendido y con LED de estado normal",
+      "description": "Verificar que el controlador responda encendido en arranque con LED verde",
+      "category": "CRITICAL",
+      "automatable": true,
+      "tags": ["basic", "smoke", "hardware", "startup"],
+      "estimatedTime": 2,
+      "dependencies": [],
+      "acceptance": [
+        "LED verde visible",
+        "Dispositivo responde a ping",
+        "Dashboard muestra controlador online"
+      ]
+    },
+    {
+      "id": "ctrl-002",
+      "title": "Conexión a red LAN/WiFi activa y estable",
+      "category": "CRITICAL",
+      "automatable": true,
+      "tags": ["connectivity", "smoke", "network"],
+      "estimatedTime": 5,
+      "dependencies": ["ctrl-001"],
+      "acceptance": [
+        "IP asignada correctamente",
+        "Sin pérdida de paquetes",
+        "Latencia < 100ms"
+      ]
+    },
+    {
+      "id": "ctrl-003",
+      "title": "Hora y zona horaria configuradas correctamente",
+      "category": "CORE",
+      "automatable": false,
+      "tags": ["configuration", "manual", "system"],
+      "estimatedTime": 3,
+      "dependencies": ["ctrl-002"],
+      "acceptance": [
+        "Zona horaria correcta",
+        "Hora sincronizada con NTP",
+        "Timestamps en logs son precisos"
+      ]
+    },
+    {
+      "id": "ctrl-004",
+      "title": "Periféricos configurados correctamente desde dashboard",
+      "category": "CORE",
+      "automatable": true,
+      "tags": ["configuration", "integration", "peripherals"],
+      "estimatedTime": 10,
+      "dependencies": ["ctrl-001", "ctrl-002"],
+      "acceptance": [
+        "Todos los periféricos aparecen en dashboard",
+        "Configuración guardada correctamente",
+        "Periféricos responden a comandos"
+      ]
+    },
+    {
+      "id": "ctrl-005",
+      "title": "Servicios Smartki activos después de reinicio controlado",
+      "category": "EXTENDED",
+      "automatable": true,
+      "tags": ["stability", "edge-case", "restart", "services"],
+      "estimatedTime": 15,
+      "dependencies": ["ctrl-001", "ctrl-004"],
+      "acceptance": [
+        "Reinicio completado sin errores",
+        "Todos los servicios online después de 30 segundos",
+        "Periféricos reconectados automáticamente"
+      ]
+    }
+  ]
+}
