@@ -25,9 +25,8 @@ const MULTIVALIDATION_DEVICES = ['lpr', 'qr', 'facial', 'stickertag'];
 // triple, y de qué otros factores la acompañen).
 const MULTIVALIDATION_FACTOR_TESTS = {
   lpr: [
-    'LPR: patente detectada coincide con vehículo registrado → habilita el resto de la cadena.',
-    'LPR: patente en lista negra → acceso denegado sin evaluar el resto de los factores.',
-    'LPR: lectura de baja confianza (patente parcial/borrosa) → no habilita el resto de la cadena.',
+    'LPR: patente detectada coincide con vehículo registrado → ese factor queda validado (el acceso se concede recién cuando el resto de los factores de la puerta también estén correctos).',
+    'LPR: lectura de baja confianza (patente parcial/borrosa) → ese factor no queda validado, el acceso sigue a la espera de una lectura correcta.',
   ],
   qr: [
     'QR: código fuera de vigencia (vencido) → acceso denegado aunque el resto de factores sean correctos.',
@@ -36,12 +35,12 @@ const MULTIVALIDATION_FACTOR_TESTS = {
   ],
   facial: [
     'Facial: rostro reconocido pero usuario sin permiso/horario habilitado → acceso denegado.',
-    'Facial: rostro no reconocido → no habilita el resto de la cadena.',
+    'Facial: rostro no reconocido → ese factor no queda validado, el acceso sigue a la espera de un reconocimiento correcto.',
   ],
   stickertag: [
-    'StickerTag: tag detectado pero no asociado a un usuario habilitado → acceso denegado sin evaluar el resto de los factores.',
+    'StickerTag: tag detectado pero no asociado a un usuario habilitado → acceso denegado aunque el resto de factores sean correctos.',
     'StickerTag: tag eliminado o de otra comunidad → acceso denegado.',
-    'StickerTag: tag no detectado (fuera de rango o dañado) → no habilita el resto de la cadena.',
+    'StickerTag: tag no detectado (fuera de rango o dañado) → ese factor no queda validado, el acceso sigue a la espera de una lectura correcta.',
   ],
 };
 
@@ -91,26 +90,6 @@ function computeDoorFactors(node) {
   });
 
   return doorFactors;
-}
-
-function getDoorFactorSummary(factors) {
-  const parts = [];
-  if (factors.hasLpr) parts.push(DEVICE_CATALOG.lpr?.name || 'LPR');
-
-  if (factors.hasFacial) {
-    const facialName = DEVICE_CATALOG.facial?.name || 'Facial';
-    parts.push(
-      factors.hasStandaloneQr
-        ? `${facialName} (con QR integrado) + ${DEVICE_CATALOG.qr?.name || 'QR'}`
-        : `${facialName} (con QR integrado)`
-    );
-  } else if (factors.hasStandaloneQr) {
-    parts.push(DEVICE_CATALOG.qr?.name || 'QR');
-  }
-
-  if (factors.hasStickerTag) parts.push(DEVICE_CATALOG.stickertag?.name || 'StickerTag');
-
-  return parts.join(' + ');
 }
 
 // Hash determinístico (FNV-1a 32 bits) del texto de la prueba. No es para
@@ -283,16 +262,13 @@ function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instanc
     const isMultivalidation = factorCount >= 2;
 
     if (isMultivalidation) {
-      const factorNames = getDoorFactorSummary(doorFactorsForThisDoor);
-
       // Capa 1: pruebas comunes a cualquier cadena de Multivalidación (doble
       // o triple, cualquier combinación de factores presentes en esta puerta).
       dynamicTests.push(
-        `[Multi Validación] Confirmar factores configurados en esta puerta: ${factorNames}.`,
         '[Multi Validación] Acceso con todos los factores correctos → ingreso concedido.',
         '[Multi Validación] Acceso con uno o más factores incorrectos/faltantes → acceso denegado.',
-        '[Multi Validación] Validación completa dentro del tiempo máximo configurado → ingreso concedido sin demoras anómalas.',
-        '[Multi Validación] Espera prolongada sin completar todos los factores (fuera del tiempo máximo configurado) → el sistema degrada a un flujo alternativo sin quedar trabado.',
+        '[Multi Validación] Completar todos los factores sin pausas → el equipo pasa de uno a otro sin demoras raras ni quedarse "pensando".',
+        '[Multi Validación] Completar solo el primer factor y no continuar con el resto (irse sin terminar la cadena) → el equipo vuelve solo a su estado normal, listo para la siguiente persona, sin quedar trabado esperando.',
         '[Multi Validación] Registro del evento consolidado (todos los factores bajo el mismo evento) visible en el sistema.'
       );
 
@@ -306,16 +282,6 @@ function buildDynamicTests(selectedCommunity, peripheralType, baseTests, instanc
       if (peripheralType === 'facial') {
         getMultivalidationFactorTests('qr', { integrated: true })
           .forEach(test => dynamicTests.push(`[Multi Validación] ${test}`));
-      }
-
-      // Capa 3: cadena con LPR + Facial (triple, con QR propio o integrado).
-      // Lo único garantizado por diseño es que LPR se valida primero
-      // (identifica el vehículo antes de pedir el resto); el orden entre
-      // Facial y QR no está fijo.
-      if (hasLpr && hasFacial) {
-        dynamicTests.push(
-          '[Multi Validación] LPR se valida primero en la cadena: si no coincide o no habilita el paso, el acceso se deniega sin llegar a solicitar Facial ni QR.'
-        );
       }
     }
   }
