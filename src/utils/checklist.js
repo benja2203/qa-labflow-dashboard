@@ -25,8 +25,8 @@ const MULTIVALIDATION_DEVICES = ['lpr', 'qr', 'facial', 'stickertag'];
 // triple, y de qué otros factores la acompañen).
 const MULTIVALIDATION_FACTOR_TESTS = {
   lpr: [
-    'LPR: patente detectada coincide con vehículo registrado → habilita el resto de la cadena.',
-    'LPR: lectura de baja confianza (patente parcial/borrosa) → no habilita el resto de la cadena.',
+    'LPR: patente detectada coincide con vehículo registrado → ese factor queda validado (el acceso se concede recién cuando el resto de los factores de la puerta también estén correctos).',
+    'LPR: lectura de baja confianza (patente parcial/borrosa) → ese factor no queda validado, el acceso sigue a la espera de una lectura correcta.',
   ],
   qr: [
     'QR: código fuera de vigencia (vencido) → acceso denegado aunque el resto de factores sean correctos.',
@@ -35,12 +35,12 @@ const MULTIVALIDATION_FACTOR_TESTS = {
   ],
   facial: [
     'Facial: rostro reconocido pero usuario sin permiso/horario habilitado → acceso denegado.',
-    'Facial: rostro no reconocido → no habilita el resto de la cadena.',
+    'Facial: rostro no reconocido → ese factor no queda validado, el acceso sigue a la espera de un reconocimiento correcto.',
   ],
   stickertag: [
-    'StickerTag: tag detectado pero no asociado a un usuario habilitado → acceso denegado sin evaluar el resto de los factores.',
+    'StickerTag: tag detectado pero no asociado a un usuario habilitado → acceso denegado aunque el resto de factores sean correctos.',
     'StickerTag: tag eliminado o de otra comunidad → acceso denegado.',
-    'StickerTag: tag no detectado (fuera de rango o dañado) → no habilita el resto de la cadena.',
+    'StickerTag: tag no detectado (fuera de rango o dañado) → ese factor no queda validado, el acceso sigue a la espera de una lectura correcta.',
   ],
 };
 
