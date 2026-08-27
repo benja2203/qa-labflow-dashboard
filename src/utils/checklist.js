@@ -26,7 +26,6 @@ const MULTIVALIDATION_DEVICES = ['lpr', 'qr', 'facial', 'stickertag'];
 const MULTIVALIDATION_FACTOR_TESTS = {
   lpr: [
     'LPR: patente detectada coincide con vehículo registrado → habilita el resto de la cadena.',
-    'LPR: patente en lista negra → acceso denegado sin evaluar el resto de los factores.',
     'LPR: lectura de baja confianza (patente parcial/borrosa) → no habilita el resto de la cadena.',
   ],
   qr: [
