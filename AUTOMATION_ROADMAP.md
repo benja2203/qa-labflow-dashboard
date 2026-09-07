@@ -92,35 +92,48 @@ la sección anterior quedaron así — ya no son tres incógnitas iguales:
    (lógica de interpretación de la respuesta), cero trabajo adicional para
    el equipo de desarrollo.
 
-3. **Simular un evento de lectura por API — 🟡 hay precedente real, pero
-   acotado.** Encontré el contrato exacto en Confluence
-   ("Unificación Smartki Park: Convenio + Transiente — Puente
-   multi-método", página 924155905): un servicio nuevo (`ParkBridgeServer`)
-   expone `POST /bridge/api/v1/validate/lpr` (acepta patente + imagen en
-   base64 opcional), `/validate/qr`, `/validate/nfc` y `/validate/sticker`,
-   todos devolviendo `{status, code, message}` — exactamente el patrón
-   "inyectar una lectura, leer el resultado" que hace falta.
+3. **Simular un evento de lectura por API — ✅ ya existe, no hay que
+   pedirle a desarrollo que construya nada.** Corrección sobre lo que decía
+   antes esta sección: `ParkBridgeServer` (Smartki Park) fue el ejemplo que
+   encontré primero, pero **no es el que hay que usar** — es un puente
+   nuevo, en desarrollo, y específico de estacionamientos.
 
-   **Importante — esto es de Smartki Park (estacionamientos), no del
-   control de acceso de edificios/comunidades que testeás vos:**
-   - Es parte de un proyecto nuevo para unificar Smartki Park Convenio y
-     Transiente, **en desarrollo activo ahora mismo** (arrancó 22-jul-2026,
-     LPR y QR se programaron primero, NFC y StickerTag se están
-     construyendo la semana del 27-ago al 03-sep-2026, desarrollo completo
-     recién el 04-sep-2026, QA hasta el 30-sep-2026, piloto en producción
-     el 06-oct-2026).
-   - El endpoint valida contra la lógica de "convenio" de un
-     estacionamiento (vigencia, blacklist, cupos), no contra el control de
-     acceso general de una comunidad residencial/edificio.
-   - No confirma que exista (o vaya a existir) un endpoint equivalente
-     para el catálogo de periféricos de `deviceCatalog.jsx` (QR/StickerTag/
-     LPR/Facial de acceso general).
+   Lo que sí aplica directo a comunidades (`deviceCatalog.jsx`): el
+   monolito `smartki_v_2_0` — el que corre en **cada controlador de
+   comunidad**, no solo en Park — ya tiene un proceso HTTP dedicado por
+   cada método de acceso, corriendo hoy en producción:
+   - **LPR**: `LprServer.js`, puerto 5004, `POST /smartki_lpr/api/v1/
+     OnCarHandledHikvision` (y V2) — recibe la patente leída por la
+     cámara y la valida contra la BD local del controlador.
+   - **QR**: microservicio `ms-smartki-qr` — "entrega una rápida
+     respuesta de OK/NOK" para lectores QR y reconocimiento facial.
+   - **StickerTag**: `AntennaRS485Receiver.js` — escucha los eventos de
+     la antena (`AntenaId`, `tag`, `event` entrada/salida, `timestamp`).
 
-   Sí confirma algo valioso: el patrón "endpoint que recibe una lectura
-   simulada y devuelve la decisión" **es un patrón que Smartki ya usa y
-   sabe construir** — no es una idea rara. La pregunta puntual que falta:
-   ¿existe o se puede pedir un endpoint equivalente para el flujo de acceso
-   general (no parking)?
+   Estos son los mismos servicios que reciben la lectura real cuando un
+   residente pasa su QR o su tag — el hardware físico les pega a ellos.
+   **No hay endpoint que crear**, hay que pedir documentación/acceso a los
+   que ya están corriendo.
+
+   **Dos preguntas puntuales que sí hay que hacer, ninguna es "desarrollen
+   algo nuevo":**
+   - ¿Cuál es el contrato exacto de cada uno (payload, respuesta, cómo se
+     distingue "concedido" de "denegado" de "error interno")? Para LPR ya
+     tengo el endpoint y el puerto; para QR y StickerTag falta el detalle
+     fino.
+   - **Crítica de seguridad**: ¿alguno de estos tiene (o se le puede
+     agregar) un modo "solo validar, sin accionar el relé"? El puente de
+     Park sí lo tiene (`ParkBridgeServer` lo llama "flag solo-validar sin
+     relé", tarea M2 de ese proyecto) precisamente porque probar sin eso
+     abriría la puerta/barrera de verdad. Sin confirmar esto, automatizar
+     pruebas en una instalación real podría abrir puertas físicas en
+     producción — no se puede avanzar a probar contra hardware real sin
+     esta respuesta.
+
+   **Restricción de red importante**: estos servicios corren en la red
+   local del sitio (`http://CONTROLLER_IP:puerto`, ej. `10.20.20.3:5004`),
+   no son alcanzables desde internet. Esto cambia cómo se ejecuta
+   `automation/` — ver `IMPLEMENTATION_PLAN.md`.
 
 ## Qué sigue
 
@@ -128,10 +141,11 @@ la sección anterior quedaron así — ya no son tres incógnitas iguales:
    credencial y cargarla en `automation/.env`.
 2. Empezar por **Invitaciones**: sigue siendo el candidato más simple —
    100% API, sin hardware ni endpoints nuevos de por medio.
-3. Preguntar puntualmente si existe un endpoint de "simular lectura +
-   resultado" para el control de acceso general (no Park) — con el
-   precedente de `ParkBridgeServer` como referencia concreta de qué pedir.
-   Es la **única** pregunta que sigue realmente pendiente de desarrollo.
+3. Pedir a desarrollo el contrato de `LprServer`/`ms-smartki-qr`/
+   `AntennaRS485Receiver` (payload y respuesta exactos) y confirmar el
+   modo "solo validar, sin relé" — no es pedir una feature nueva, es
+   documentación + una confirmación de seguridad sobre servicios que ya
+   corren en producción. Es lo único que sigue pendiente de desarrollo.
 4. ~~Estado online de dispositivo individual como pregunta aparte~~ — ya
    no es una pregunta a desarrollo: se infiere del resultado de (3) (ver
    sección anterior). Cuando (3) esté resuelto, esto sale gratis, no
