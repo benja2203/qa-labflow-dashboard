@@ -56,7 +56,7 @@ function buildHeadlineSentence(report) {
     <>
       De <strong className="text-slate-800">{communitiesCount}</strong> {communitiesCount === 1 ? 'proyecto probado' : 'proyectos probados'}, <strong className="text-red-700">{noAptoCount} {noAptoCount === 1 ? 'quedó' : 'quedaron'} NO APTO</strong>
       {noAptoWithProcessObservationCount > 0 && (
-        <> — y <strong>{noAptoWithProcessObservationCount} de {noAptoCount}</strong> tienen observaciones de <strong>instalación no lista</strong> registradas, no solo fallas técnicas.</>
+        <> — y <strong>{noAptoWithProcessObservationCount} de {noAptoCount}</strong> tienen observaciones de <strong>proceso/documentación</strong> registradas, no solo fallas técnicas.</>
       )}
       {noAptoWithProcessObservationCount === 0 && <>.</>}
     </>
@@ -157,16 +157,16 @@ export default function GeneralReportView({
           <StatTile label="Proyectos" value={report.communitiesCount} />
           <StatTile label="Aprobación" value={`${report.approvalRate}%`} className="border-green-200 bg-green-50" />
           <StatTile label="Bajo excepción" value={report.deliveredUnderExceptionCount} className="border-orange-200 bg-orange-50" />
-          <StatTile label="Obs. instalación" value={report.installationNotReadyCount} className="border-purple-200 bg-purple-50" />
+          <StatTile label="Obs. de proceso" value={report.installationNotReadyCount} className="border-purple-200 bg-purple-50" />
         </div>
       </section>
 
       <section className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-sm font-black uppercase tracking-wide text-slate-700">
-          Instalación no lista vs. falla técnica real
+          Observaciones de proceso vs. fallas técnicas
         </h3>
         <p className="mb-4 mt-1 text-xs text-slate-500">
-          Separa lo que retrasa a QA por causas ajenas, de lo que realmente falló en el sistema.
+          Separa lo registrado por causas ajenas al equipo (proceso/documentación) de lo que realmente falló en el sistema. No afecta el estado APTO / NO APTO de cada proyecto.
         </p>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-xl border border-purple-200 bg-purple-50 p-4">
@@ -174,9 +174,9 @@ export default function GeneralReportView({
               <Wrench className="h-4 w-4" />
               <span className="text-2xl font-black">{report.installationNotReadyCount}</span>
             </div>
-            <p className="mt-1 text-sm font-bold text-purple-800">Observaciones de instalación</p>
+            <p className="mt-1 text-sm font-bold text-purple-800">Observaciones de proceso / documentación</p>
             <p className="mt-1 text-xs leading-5 text-slate-600">
-              Equipos sin energizar, sin configurar o faltantes al momento de probar — categoría "Proceso/Documentación".
+              Equipos sin energizar, sin configurar o faltantes al momento de probar, o documentación faltante — categoría "Proceso/Documentación".
             </p>
           </div>
           <div className="rounded-xl border border-red-200 bg-red-50 p-4">

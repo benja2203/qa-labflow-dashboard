@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
 import { TEST_STATUS } from '../constants/testStatus.js';
-import { PROCESS_SCOPE, resolveObservationScopeLabel } from '../constants/observationScopes.js';
+import { resolveObservationScopeLabel } from '../constants/observationScopes.js';
 import { OBSERVATION_STATUS, resolveObservationStatus } from '../constants/observationStatus.js';
 import {
   getApprovalSummaryText,
@@ -10,6 +10,8 @@ import {
   getTechnicalDeviceReport,
   hasChecklistFailuresWithoutComment,
 } from './report.js';
+import { describeSession, formatDuration, getTestingSummary } from './testSessions.js';
+import { getFailureTableRows } from './testClassification.js';
 
 const PAGE = {
   width: 210,
@@ -134,11 +136,17 @@ function createPdfWriter(doc) {
     y = PAGE.margin + 2;
   }
 
+  // Orientación explícita: jsPDF recuerda la orientación de la última página
+  // agregada, así que después de las páginas horizontales de la tabla de
+  // fallas un addPage() sin argumentos seguiría saliendo horizontal.
+  function addPortraitPage() {
+    doc.addPage('a4', 'portrait');
+    addPageHeader();
+  }
+
   function ensurePage(requiredHeight = 10) {
     if (y + requiredHeight <= bottomLimit) return;
-
-    doc.addPage();
-    addPageHeader();
+    addPortraitPage();
   }
 
   function addGap(size = 4) {
@@ -457,13 +465,16 @@ function createPdfWriter(doc) {
 
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
       doc.setPage(pageNumber);
+      // Cada página puede ser vertical u horizontal (tabla de fallas).
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
       setTextColor(doc, COLORS.slate500);
       doc.text(
         `Página ${pageNumber} de ${totalPages}`,
-        PAGE.width - PAGE.margin,
-        PAGE.height - 7,
+        pageWidth - PAGE.margin,
+        pageHeight - 7,
         { align: 'right' }
       );
     }
@@ -507,9 +518,122 @@ function createPdfWriter(doc) {
     addUnassignedDeviceRow,
     addFooterPages,
     addImage,
+    addPortraitPage,
     ensurePage,
     setY,
   };
+}
+
+const FAILURE_TABLE_COLUMNS = [
+  { key: 'phaseLabel', label: 'Fase', width: 13 },
+  { key: 'module', label: 'Módulo / método', width: 30 },
+  { key: 'device', label: 'Equipo', width: 36 },
+  { key: 'test', label: 'Prueba', width: 68 },
+  { key: 'category', label: 'Tipo de prueba', width: 25 },
+  { key: 'status', label: 'Estado', width: 15 },
+  { key: 'impact', label: 'Impacto', width: 34 },
+  { key: 'affects', label: 'También afecta', width: 52 },
+];
+
+// Tabla "tipo Excel" de pruebas en Fail/Blocked, en páginas horizontales
+// propias (8 columnas no caben legibles en vertical). Es una grilla real
+// con bordes en cada celda y una fila por prueba, con la Fase repetida en
+// cada fila (no como título de grupo), para que al pasar el PDF a Excel
+// quede una tabla que se pueda filtrar y agrupar directamente.
+function addFailureTablePages(doc, rows) {
+  const page = { width: 297, height: 210, margin: 12 };
+  const fontSize = 7;
+  const lineHeight = 3.1;
+  const padding = 1.6;
+  const bottomLimit = page.height - 13;
+  let y = 0;
+
+  function cellLines(column, row) {
+    const value = column.key === 'status' ? getStatusLabel(row.status) : row[column.key];
+    return doc.splitTextToSize(cleanText(value) || '-', column.width - padding * 2);
+  }
+
+  function drawHeaderRow() {
+    const height = lineHeight + padding * 2 + 1;
+    let x = page.margin;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(fontSize);
+    setDrawColor(doc, COLORS.slate300);
+    FAILURE_TABLE_COLUMNS.forEach(column => {
+      setFillColor(doc, COLORS.slate800);
+      doc.rect(x, y, column.width, height, 'FD');
+      setTextColor(doc, COLORS.white);
+      doc.text(column.label.toUpperCase(), x + padding, y + padding + 2.6);
+      x += column.width;
+    });
+    y += height;
+  }
+
+  function startPage(isFirstPage) {
+    doc.addPage('a4', 'landscape');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    setTextColor(doc, COLORS.slate500);
+    doc.text('QA LabFlow - Reporte de Validación', page.margin, 9);
+    setDrawColor(doc, COLORS.slate300);
+    doc.line(page.margin, 11, page.width - page.margin, 11);
+    y = 19;
+
+    doc.setFontSize(12);
+    setTextColor(doc, COLORS.slate900);
+    doc.text(
+      isFirstPage ? 'DETALLE DE PRUEBAS CON FALLA O BLOQUEO' : 'DETALLE DE PRUEBAS CON FALLA O BLOQUEO (CONTINUACIÓN)',
+      page.margin,
+      y
+    );
+    y += 4;
+
+    if (isFirstPage) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      setTextColor(doc, COLORS.slate500);
+      doc.text(
+        `${rows.length} prueba(s) en Fail o Blocked. "Tipo de prueba" e "Impacto" son categorías fijas para poder agrupar y comparar entre proyectos; el detalle de cada observación está en la sección de fallas y evidencia.`,
+        page.margin,
+        y + 1.5,
+        { maxWidth: page.width - page.margin * 2 }
+      );
+      y += 7;
+    } else {
+      y += 2;
+    }
+
+    drawHeaderRow();
+  }
+
+  startPage(true);
+
+  rows.forEach((row, rowIndex) => {
+    const linesByColumn = FAILURE_TABLE_COLUMNS.map(column => cellLines(column, row));
+    const rowHeight = Math.max(...linesByColumn.map(lines => lines.length)) * lineHeight + padding * 2;
+
+    if (y + rowHeight > bottomLimit) startPage(false);
+
+    let x = page.margin;
+    FAILURE_TABLE_COLUMNS.forEach((column, columnIndex) => {
+      const isStatus = column.key === 'status';
+      const statusColor = STATUS_COLORS[row.status] || STATUS_COLORS.pending;
+      const fill = isStatus ? statusColor.fill : (rowIndex % 2 === 1 ? COLORS.slate100 : COLORS.white);
+
+      setFillColor(doc, fill);
+      setDrawColor(doc, COLORS.slate300);
+      doc.rect(x, y, column.width, rowHeight, 'FD');
+
+      doc.setFont('helvetica', isStatus || column.key === 'module' ? 'bold' : 'normal');
+      doc.setFontSize(fontSize);
+      setTextColor(doc, isStatus ? statusColor.text : COLORS.slate800);
+      doc.text(linesByColumn[columnIndex], x + padding, y + padding + 2.4, { lineHeightFactor: lineHeight / (fontSize * 0.3528) });
+
+      x += column.width;
+    });
+
+    y += rowHeight;
+  });
 }
 
 function getPeripheralsCount(selectedCommunity) {
@@ -588,6 +712,7 @@ export function downloadStructuredPdfReport({
   deliveryException = null,
   closedProject = null,
   deviceNotes = {},
+  testSessions = [],
 }) {
   const doc = new jsPDF({
     unit: 'mm',
@@ -598,6 +723,7 @@ export function downloadStructuredPdfReport({
 
   const writer = createPdfWriter(doc);
   const generatedAt = new Date();
+  const testingSummary = getTestingSummary(testSessions, generatedAt);
   const issues = getReportIssues(checklistByPhases, taskResults, deviceNotes);
   const fullChecklistResults = getFullReportTasks(checklistByPhases, taskResults);
   const coverageRows = getDeviceCoverageRows(fullChecklistResults);
@@ -653,6 +779,55 @@ export function downloadStructuredPdfReport({
     writer.addGap(4);
   }
 
+  writer.addSectionTitle('Tiempo de pruebas');
+  if (!testingSummary) {
+    writer.addParagraph('No se registraron sesiones de prueba (hora de inicio/término) para esta comunidad.', {
+      color: COLORS.slate500,
+    });
+  } else {
+    // Con pruebas pendientes, la última hora registrada es "hasta dónde se
+    // avanzó", no el término de las pruebas -- el reporte se manda igual
+    // como avance y después se manda el actualizado.
+    const isProgressReport = !testingSummary.isActive && summary.pending > 0;
+    writer.addMetricRow([
+      { value: formatDateTime(testingSummary.firstStartedAt), label: 'Inicio de pruebas' },
+      testingSummary.isActive
+        ? { value: 'En curso', label: 'Término de pruebas', color: COLORS.green600, fill: COLORS.green50 }
+        : {
+            value: formatDateTime(testingSummary.lastEndedAt),
+            label: isProgressReport ? 'Avance registrado hasta' : 'Término de pruebas',
+          },
+      { value: formatDuration(testingSummary.totalMs), label: 'Tiempo efectivo', color: COLORS.slate900 },
+    ]);
+    if (testingSummary.isActive) {
+      writer.addParagraph(
+        'Reporte parcial: las pruebas seguían en curso al generar este documento. El tiempo efectivo se calculó hasta la hora de generación.',
+        { fontSize: 8.5, fontStyle: 'bold', color: COLORS.yellow600 }
+      );
+      writer.addGap(2);
+    } else if (isProgressReport) {
+      writer.addParagraph(
+        `Reporte de avance: quedan ${summary.pending} prueba(s) pendientes. Las horas corresponden a las sesiones registradas hasta ahora; las pruebas continúan en una próxima sesión.`,
+        { fontSize: 8.5, fontStyle: 'bold', color: COLORS.yellow600 }
+      );
+      writer.addGap(2);
+    }
+    if (testingSummary.sessions.length > 1) {
+      writer.addLabelValue(
+        `Sesiones (${testingSummary.sessions.length})`,
+        testingSummary.sessions
+          .map((session, index) => `${index + 1}. ${describeSession(session, generatedAt)}`)
+          .join('\n'),
+        { fontSize: 8.5 }
+      );
+      writer.addParagraph(
+        'El tiempo efectivo suma solo las sesiones registradas; no incluye las pausas entre una sesión y otra.',
+        { fontSize: 8, color: COLORS.slate500 }
+      );
+    }
+  }
+  writer.addGap(2);
+
   writer.addSectionTitle('Objetivo del reporte');
   writer.addParagraph(
     isFullReport
@@ -691,27 +866,20 @@ export function downloadStructuredPdfReport({
     }
   );
 
+  // Detalle de qué pruebas son las que están en Fail/Blocked (los cuadritos
+  // de arriba solo dan la cantidad). Va en páginas horizontales propias;
+  // después el reporte sigue en vertical en una página nueva.
+  const failureTableRows = getFailureTableRows(checklistByPhases, taskResults, selectedCommunity);
+  if (failureTableRows.length > 0) {
+    addFailureTablePages(doc, failureTableRows);
+    writer.addPortraitPage();
+  } else {
+    writer.addSectionTitle('Detalle de pruebas con falla o bloqueo');
+    writer.addParagraph('No hay pruebas en Fail ni Blocked.', { color: COLORS.slate500 });
+  }
+
   writer.addSectionTitle('Módulo de aprobación');
   writer.addParagraph(getApprovalSummaryText(summary, finalLabStatus), { fontStyle: 'bold' });
-
-  const processObservations = generalObservations.filter(observation => (
-    Array.isArray(observation.scope) && observation.scope.includes(PROCESS_SCOPE.id)
-  ));
-
-  if (processObservations.length > 0) {
-    writer.addSectionTitle('Instalación no lista para QA');
-    writer.addParagraph(
-      `${processObservations.length} observación(es) de Proceso/Documentación registradas — no son fallas de equipo.`,
-      { fontStyle: 'bold', color: COLORS.purple600 }
-    );
-    processObservations.forEach((observation, index) => {
-      writer.ensurePage(14);
-      writer.addParagraph(`${index + 1}. ${observation.title}`, { fontStyle: 'bold' });
-      writer.addLabelValue('Registrada', formatDateTime(observation.createdAt), { emptyText: 'Sin fecha' });
-      writer.addGap(2);
-    });
-    writer.addGap(3);
-  }
 
   if (generalObservations.length > 0) {
     writer.addSectionTitle('Observaciones generales (para mejora)');
@@ -939,7 +1107,7 @@ export function downloadGeneralReportPdf({ report }) {
     ? `De ${report.communitiesCount} proyecto(s) probados, ninguno quedo NO APTO.`
     : `De ${report.communitiesCount} proyecto(s) probados, ${report.noAptoCount} quedaron NO APTO` +
       (report.noAptoWithProcessObservationCount > 0
-        ? ` - y ${report.noAptoWithProcessObservationCount} de ${report.noAptoCount} tienen observaciones de instalacion no lista registradas, no solo fallas tecnicas.`
+        ? ` - y ${report.noAptoWithProcessObservationCount} de ${report.noAptoCount} tienen observaciones de proceso/documentacion registradas, no solo fallas tecnicas.`
         : '.');
   writer.addParagraph(noAptoLine, { fontStyle: 'bold', color: COLORS.slate800, fontSize: 10 });
   writer.addGap(2);
@@ -947,12 +1115,12 @@ export function downloadGeneralReportPdf({ report }) {
     { value: String(report.communitiesCount), label: 'Proyectos' },
     { value: `${report.approvalRate}%`, label: 'Aprobacion', color: COLORS.green600, fill: COLORS.green50 },
     { value: String(report.deliveredUnderExceptionCount), label: 'Bajo excepcion', color: COLORS.orange600, fill: COLORS.orange50 },
-    { value: String(report.installationNotReadyCount), label: 'Obs. instalacion', color: COLORS.purple600, fill: COLORS.purple50 },
+    { value: String(report.installationNotReadyCount), label: 'Obs. de proceso', color: COLORS.purple600, fill: COLORS.purple50 },
   ]);
 
-  writer.addSectionTitle('Instalacion no lista vs. falla tecnica real');
+  writer.addSectionTitle('Observaciones de proceso vs. fallas tecnicas');
   writer.addMetricRow([
-    { value: String(report.installationNotReadyCount), label: 'Observaciones de instalacion', color: COLORS.purple600, fill: COLORS.purple50 },
+    { value: String(report.installationNotReadyCount), label: 'Observaciones de proceso', color: COLORS.purple600, fill: COLORS.purple50 },
     { value: String(report.technicalFailureCount), label: 'Fallas tecnicas confirmadas', color: COLORS.red600, fill: COLORS.red50 },
   ]);
 

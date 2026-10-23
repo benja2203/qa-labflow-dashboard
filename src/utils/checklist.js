@@ -399,6 +399,7 @@ export function buildChecklistByPhases(selectedCommunity) {
     phases[hubCatalog.phase].devices.push({
       id: `community-${selectedCommunity.id}-${node.id}`,
       rawBaseId: controllerBaseId,
+      nodeId: node.id,
       deviceName: `${hubCatalog.name} (${node.label})`,
       type: hubCatalog.id,
       typeName: hubCatalog.name,
@@ -438,6 +439,8 @@ export function buildChecklistByPhases(selectedCommunity) {
         phases[peripheralCatalog.phase].devices.push({
           id: `community-${selectedCommunity.id}-${baseId}`,
           rawBaseId: baseId,
+          nodeId: node.id,
+          doorId: instance.doorId,
           deviceName: `${deviceDisplayName} [Conectado a: ${node.label}]`,
           type: peripheralCatalog.id,
           typeName: peripheralCatalog.name,

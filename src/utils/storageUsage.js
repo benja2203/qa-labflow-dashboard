@@ -9,6 +9,7 @@ const STORAGE_KEYS = [
   { key: 'qa-labflow-delivery-exceptions', label: 'Excepciones de entrega' },
   { key: 'qa-labflow-closed-projects', label: 'Proyectos cerrados (fotos)' },
   { key: 'qa-labflow-device-notes', label: 'Notas de dispositivo' },
+  { key: 'qa-labflow-test-sessions', label: 'Sesiones de prueba' },
 ];
 
 // Cuota de referencia conservadora: Safari históricamente limita a ~5MB por

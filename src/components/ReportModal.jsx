@@ -14,12 +14,13 @@ import {
   Network,
   Server,
   ShieldAlert,
+  Timer,
   Wrench,
   X,
   Zap,
 } from 'lucide-react';
 import { DEVICE_CATALOG } from '../data/deviceCatalog.jsx';
-import { PROCESS_SCOPE, resolveObservationScopeLabel } from '../constants/observationScopes.js';
+import { resolveObservationScopeLabel } from '../constants/observationScopes.js';
 import { OBSERVATION_STATUS, resolveObservationStatus } from '../constants/observationStatus.js';
 import { TEST_STATUS } from '../constants/testStatus.js';
 import {
@@ -30,6 +31,10 @@ import {
   getTechnicalDeviceReport,
   hasChecklistFailuresWithoutComment,
 } from '../utils/report.js';
+import { describeSession, formatDuration, getTestingSummary } from '../utils/testSessions.js';
+import { getFailureTableRows } from '../utils/testClassification.js';
+
+const FAILURE_TABLE_HEADERS = ['Fase', 'Módulo / método', 'Equipo', 'Prueba', 'Tipo de prueba', 'Estado', 'Impacto', 'También afecta'];
 
 function MetricCard({ value, label, className = 'text-blue-600' }) {
   return (
@@ -145,20 +150,21 @@ export default function ReportModal({
   deliveryException = null,
   closedProject = null,
   deviceNotes = {},
+  testSessions = [],
   onClose,
 }) {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [reportMode, setReportMode] = useState('compact');
 
   const issues = getReportIssues(checklistByPhases, taskResults, deviceNotes);
-  const processObservations = generalObservations.filter(observation => (
-    Array.isArray(observation.scope) && observation.scope.includes(PROCESS_SCOPE.id)
-  ));
   const fullChecklistResults = getFullReportTasks(checklistByPhases, taskResults);
   const coverageRows = getDeviceCoverageRows(fullChecklistResults);
   const technicalReport = getTechnicalDeviceReport(selectedCommunity);
   const hasInvalidFailures = hasChecklistFailuresWithoutComment(checklistByPhases, taskResults, deviceNotes);
   const generatedAt = new Date();
+  const testingSummary = getTestingSummary(testSessions, generatedAt);
+  const isProgressReport = Boolean(testingSummary && !testingSummary.isActive && summary.pending > 0);
+  const failureTableRows = getFailureTableRows(checklistByPhases, taskResults, selectedCommunity);
   const enabledModules = getModuleNames(selectedCommunity);
   const peripheralsCount = selectedCommunity.nodes?.reduce((acc, node) => {
     return acc + (node.peripherals || []).reduce((peripheralAcc, peripheral) => peripheralAcc + Number(peripheral.qty || 0), 0);
@@ -185,6 +191,7 @@ export default function ReportModal({
         deliveryException,
         closedProject,
         deviceNotes,
+        testSessions,
       });
     } catch (error) {
       console.error('Error generating PDF report:', error);
@@ -274,6 +281,68 @@ export default function ReportModal({
                 </div>
               )}
 
+              <section className="pdf-avoid-break mb-8">
+                <h3 className="mb-4 flex items-center gap-2 border-b-2 border-slate-200 pb-2 text-lg font-black text-slate-800">
+                  <Timer className="h-5 w-5 text-blue-500" />
+                  Tiempo de Pruebas
+                </h3>
+
+                {!testingSummary ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                    No se registraron sesiones de prueba (hora de inicio/término) para esta comunidad.
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <div className="text-xs font-bold uppercase text-slate-500">Inicio de pruebas</div>
+                        <div className="mt-1 text-lg font-black text-slate-800">{formatUpdatedAt(testingSummary.firstStartedAt)}</div>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <div className="text-xs font-bold uppercase text-slate-500">
+                          {isProgressReport ? 'Avance registrado hasta' : 'Término de pruebas'}
+                        </div>
+                        <div className={`mt-1 text-lg font-black ${testingSummary.isActive ? 'text-green-700' : 'text-slate-800'}`}>
+                          {testingSummary.isActive ? 'En curso' : formatUpdatedAt(testingSummary.lastEndedAt)}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <div className="text-xs font-bold uppercase text-slate-500">Tiempo efectivo</div>
+                        <div className="mt-1 text-lg font-black text-slate-800">{formatDuration(testingSummary.totalMs)}</div>
+                      </div>
+                    </div>
+
+                    {testingSummary.isActive && (
+                      <p className="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-xs font-semibold text-yellow-800">
+                        Reporte parcial: las pruebas seguían en curso al generar este reporte. El tiempo efectivo se calculó hasta ahora.
+                      </p>
+                    )}
+
+                    {isProgressReport && (
+                      <p className="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-xs font-semibold text-yellow-800">
+                        Reporte de avance: quedan {summary.pending} {summary.pending === 1 ? 'prueba pendiente' : 'pruebas pendientes'}. Las horas corresponden a las sesiones registradas hasta ahora; las pruebas continúan en una próxima sesión.
+                      </p>
+                    )}
+
+                    {testingSummary.sessions.length > 1 && (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+                        <div className="mb-2 text-xs font-bold uppercase text-slate-500">
+                          Sesiones ({testingSummary.sessions.length})
+                        </div>
+                        <ol className="space-y-1 text-sm text-slate-700">
+                          {testingSummary.sessions.map((session, index) => (
+                            <li key={session.id}>{index + 1}. {describeSession(session, generatedAt)}</li>
+                          ))}
+                        </ol>
+                        <p className="mt-2 text-xs text-slate-400">
+                          El tiempo efectivo suma solo las sesiones registradas; no incluye las pausas entre una sesión y otra.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </section>
+
               <section className="pdf-avoid-break mb-8 space-y-4">
                 <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
                   <strong>Objetivo del reporte:</strong> dejar trazabilidad de qué se validó, qué falló y qué evidencia quedó registrada. En modo compacto se evita listar todas las pruebas una por una; se muestra cobertura por equipo y solo se detallan fallas, bloqueos, observaciones o evidencias.
@@ -328,42 +397,46 @@ export default function ReportModal({
                 </div>
               </section>
 
-              {processObservations.length > 0 && (
-                <section className="pdf-avoid-break mb-8">
-                  <div className="flex items-center gap-3 rounded-xl border border-purple-200 bg-purple-50 p-4">
-                    <div className="rounded-lg border border-purple-200 bg-white p-2 text-purple-600">
-                      <Wrench className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="text-sm font-black text-slate-800">Instalación no lista para QA</h4>
-                      <p className="text-xs font-medium text-slate-500">
-                        Observaciones de Proceso/Documentación — no son fallas de equipo
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-black text-purple-600">{processObservations.length}</div>
-                      <div className="text-[10px] font-bold uppercase text-slate-400">registradas</div>
-                    </div>
-                  </div>
+              <section className="mb-8">
+                <h3 className="mb-4 flex items-center gap-2 border-b-2 border-slate-200 pb-2 text-lg font-black text-slate-800">
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                  Detalle de Pruebas con Falla o Bloqueo
+                </h3>
 
-                  <div className="mt-3 space-y-2">
-                    {processObservations.map((observation, index) => (
-                      <div
-                        key={observation.id || index}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                      >
-                        <span className="font-semibold text-slate-700">{observation.title}</span>
-                        {observation.createdAt && (
-                          <span className="flex items-center gap-1 text-xs font-medium text-slate-400">
-                            <Clock className="h-3 w-3" />
-                            {formatUpdatedAt(observation.createdAt)}
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                {failureTableRows.length === 0 ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                    No hay pruebas en Fail ni Blocked.
                   </div>
-                </section>
-              )}
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="w-full min-w-[900px] border-collapse text-left text-xs">
+                      <thead>
+                        <tr className="bg-slate-800 text-white">
+                          {FAILURE_TABLE_HEADERS.map(header => (
+                            <th key={header} className="border border-slate-300 px-2 py-2 text-[10px] font-black uppercase tracking-wide">
+                              {header}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {failureTableRows.map((row, index) => (
+                          <tr key={row.id} className={index % 2 === 1 ? 'bg-slate-50' : 'bg-white'}>
+                            <td className="whitespace-nowrap border border-slate-200 px-2 py-1.5 align-top text-slate-700">{row.phaseLabel}</td>
+                            <td className="border border-slate-200 px-2 py-1.5 align-top font-bold text-slate-800">{row.module}</td>
+                            <td className="border border-slate-200 px-2 py-1.5 align-top text-slate-700">{row.device}</td>
+                            <td className="border border-slate-200 px-2 py-1.5 align-top text-slate-700">{row.test}</td>
+                            <td className="border border-slate-200 px-2 py-1.5 align-top text-slate-700">{row.category}</td>
+                            <td className="border border-slate-200 px-2 py-1.5 align-top"><StatusBadge status={row.status} /></td>
+                            <td className="border border-slate-200 px-2 py-1.5 align-top text-slate-700">{row.impact}</td>
+                            <td className="border border-slate-200 px-2 py-1.5 align-top text-slate-700">{row.affects}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
 
               {generalObservations.length > 0 && (
                 <section className="pdf-avoid-break mb-8">
