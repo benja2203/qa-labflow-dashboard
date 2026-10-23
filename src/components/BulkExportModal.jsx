@@ -40,9 +40,9 @@ export default function BulkExportModal({ communities, closedProjects, onExport,
 
         <div className="flex-1 overflow-y-auto p-5">
           <p className="mb-3 text-sm leading-6 text-slate-600">
-            Descarga un JSON completo por cada comunidad marcada — topología, resultados de
-            pruebas, observaciones y excepción de entrega. Si está cerrada, exporta la foto
-            congelada tal como quedó.
+            Descarga <strong>un solo archivo .zip</strong> con un JSON completo por cada comunidad
+            marcada — topología, resultados de pruebas, observaciones, excepción de entrega y
+            tiempo de pruebas. Si está cerrada, exporta la foto congelada tal como quedó.
           </p>
 
           {communities.length === 0 ? (
@@ -106,7 +106,7 @@ export default function BulkExportModal({ communities, closedProjects, onExport,
             className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-black text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            {isExporting ? 'Exportando...' : `Exportar ${selectedIds.size || ''} proyecto${selectedIds.size === 1 ? '' : 's'}`}
+            {isExporting ? 'Exportando...' : `Exportar ${selectedIds.size || ''} proyecto${selectedIds.size === 1 ? '' : 's'} (.zip)`}
           </button>
         </div>
       </div>

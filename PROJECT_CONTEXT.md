@@ -137,7 +137,32 @@ community = {
 `qa-labflow-communities`, `qa-labflow-selected-community`,
 `qa-labflow-task-results`, `qa-labflow-general-observations`,
 `qa-labflow-delivery-exceptions`, `qa-labflow-closed-projects`,
-`qa-labflow-device-notes`.
+`qa-labflow-device-notes`, `qa-labflow-test-sessions`.
+
+**Sesiones de prueba** (`qa-labflow-test-sessions`, `{ [communityId]: [{ id, startedAt, endedAt|null }] }`):
+registran a qué hora se empezó y terminó de probar. Son una lista y no un
+único inicio/fin porque las pruebas se cortan a mitad: se manda un reporte
+parcial (sale "En curso" + aviso de reporte parcial) y después se retoma en
+otra sesión. El reporte muestra primer inicio, último término y tiempo
+efectivo (suma de sesiones, sin las pausas). Cerrar el proyecto cierra la
+sesión abierta. Lógica en `src/utils/testSessions.js`, UI en
+`TestSessionsPanel.jsx`.
+
+**Tabla "Detalle de pruebas con falla o bloqueo"** (pedido del arquitecto):
+va debajo del Resumen ejecutivo, en páginas horizontales propias del PDF, una
+fila por prueba en Fail/Blocked con columnas Fase · Módulo/método · Equipo ·
+Prueba · Tipo de prueba · Estado · Impacto · También afecta. Es una grilla
+plana (la Fase se repite en cada fila, no es título de grupo) porque el
+arquitecto la pasa a Excel y de ahí a Looker para comparar entre proyectos.
+"Tipo de prueba" e "Impacto" son categorías FIJAS (`TEST_CATEGORIES` en
+`src/utils/testClassification.js`), no texto libre, justamente para poder
+agruparlas. La clasificación se calcula desde el texto de la prueba
+(palabras clave + `CATEGORY_OVERRIDES` para los casos que engañan), así
+funciona también con proyectos cerrados y JSON importados. **Al agregar
+pruebas nuevas al catálogo, revisar en qué categoría caen** y sumar un
+override si quedan mal. "También afecta" se deriva de la topología
+(controlador → todo lo conectado; periférico → su puerta + módulos
+Invitaciones/Carnet si es QR/Facial + reglas de esa puerta).
 
 ## Qué se construyó en la sesión anterior (en orden aproximado)
 

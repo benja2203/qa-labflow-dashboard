@@ -23,6 +23,7 @@ import GeneralReportView from './components/GeneralReportView.jsx';
 import BackupSettingsModal from './components/BackupSettingsModal.jsx';
 import BulkExportModal from './components/BulkExportModal.jsx';
 import { sendExceptionBackup } from './utils/externalBackup.js';
+import { createTestSession } from './utils/testSessions.js';
 
 
 
@@ -238,7 +239,11 @@ function parseImportedPayload(rawText) {
     ? parsed.deviceNotes
     : {};
 
-  return { community, taskResults, generalObservations, deliveryException, closedProject, deviceNotes };
+  const testSessions = Array.isArray(parsed.testSessions)
+    ? parsed.testSessions.filter(session => session && typeof session.startedAt === 'string')
+    : [];
+
+  return { community, taskResults, generalObservations, deliveryException, closedProject, deviceNotes, testSessions };
 }
 
 // El snapshot de un proyecto cerrado guarda los taskId con el prefijo
@@ -286,10 +291,12 @@ function remapIdKeyedMap(map, oldId, newId) {
 }
 
 function downloadJson(filename, payload) {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+  downloadBlob(filename, new Blob([JSON.stringify(payload, null, 2)], {
     type: 'application/json',
-  });
+  }));
+}
 
+function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -313,6 +320,7 @@ function buildCommunityExportPayload(community, {
   generalObservations,
   deliveryExceptions,
   closedProjects,
+  testSessions,
 }) {
   const closedProject = closedProjects[community.id] || null;
   const isClosed = Boolean(closedProject?.closed);
@@ -337,6 +345,7 @@ function buildCommunityExportPayload(community, {
     deliveryException: deliveryExceptions[community.id] || null,
     closedProject,
     deviceNotes: effectiveDeviceNotes,
+    testSessions: testSessions[community.id] || [],
   });
 }
 
@@ -359,6 +368,7 @@ export default function App() {
   const [deliveryExceptions, setDeliveryExceptions] = useLocalStorageState('qa-labflow-delivery-exceptions', {});
   const [closedProjects, setClosedProjects] = useLocalStorageState('qa-labflow-closed-projects', {});
   const [deviceNotes, setDeviceNotes] = useLocalStorageState('qa-labflow-device-notes', {});
+  const [testSessions, setTestSessions] = useLocalStorageState('qa-labflow-test-sessions', {});
   const [taskIdsMigrated, setTaskIdsMigrated] = useLocalStorageState('qa-labflow-taskid-migration-v1', false);
   const [backupWebhookUrl, setBackupWebhookUrl] = useLocalStorageState('qa-labflow-backup-webhook-url', '');
   const [showBackupSettings, setShowBackupSettings] = useState(false);
@@ -429,6 +439,10 @@ export default function App() {
   const currentDeliveryException = useMemo(() => (
     selectedCommunity ? (deliveryExceptions[selectedCommunity.id] || null) : null
   ), [deliveryExceptions, selectedCommunity]);
+
+  const currentTestSessions = useMemo(() => (
+    selectedCommunity ? (testSessions[selectedCommunity.id] || []) : []
+  ), [testSessions, selectedCommunity]);
 
   const getTaskResult = taskId => readTaskResult(effectiveTaskResults, taskId);
 
@@ -572,6 +586,46 @@ export default function App() {
     }));
   };
 
+  const updateCurrentTestSessions = updater => {
+    if (!selectedCommunity || isCommunityClosed) return;
+    const communityId = selectedCommunity.id;
+
+    setTestSessions(prev => ({
+      ...prev,
+      [communityId]: updater(prev[communityId] || []),
+    }));
+  };
+
+  const handleStartTestSession = () => {
+    updateCurrentTestSessions(sessions => (
+      sessions.some(session => !session.endedAt) ? sessions : [...sessions, createTestSession()]
+    ));
+  };
+
+  const handleStopTestSession = () => {
+    const endedAt = new Date().toISOString();
+    updateCurrentTestSessions(sessions => sessions.map(session => (
+      session.endedAt ? session : { ...session, endedAt }
+    )));
+  };
+
+  const handleAddTestSession = session => {
+    updateCurrentTestSessions(sessions => [...sessions, session]);
+  };
+
+  const handleUpdateTestSession = (sessionId, patch) => {
+    updateCurrentTestSessions(sessions => sessions.map(session => (
+      session.id === sessionId ? { ...session, ...patch } : session
+    )));
+  };
+
+  const handleDeleteTestSession = sessionId => {
+    const confirmed = window.confirm('¿Eliminar esta sesión de pruebas? Su tiempo deja de sumarse al total del reporte.');
+    if (!confirmed) return;
+
+    updateCurrentTestSessions(sessions => sessions.filter(session => session.id !== sessionId));
+  };
+
   const sendDeliveryExceptionBackup = async (communityId, exceptionRecord) => {
     setDeliveryExceptions(prev => {
       const current = prev[communityId];
@@ -658,11 +712,25 @@ export default function App() {
       Object.entries(deviceNotes).filter(([deviceId]) => currentDeviceIds.has(deviceId))
     );
 
+    const closedAt = new Date().toISOString();
+
+    // Cerrar el proyecto también cierra la sesión de pruebas que haya
+    // quedado abierta: si no, el tiempo seguiría corriendo sobre algo ya
+    // entregado y no habría forma de pararlo (el panel queda en solo lectura).
+    setTestSessions(prev => {
+      const sessions = prev[selectedCommunity.id];
+      if (!sessions?.some(session => !session.endedAt)) return prev;
+      return {
+        ...prev,
+        [selectedCommunity.id]: sessions.map(session => (session.endedAt ? session : { ...session, endedAt: closedAt })),
+      };
+    });
+
     setClosedProjects(prev => ({
       ...prev,
       [selectedCommunity.id]: {
         closed: true,
-        closedAt: new Date().toISOString(),
+        closedAt,
         checklistByPhases: stripIconsForSnapshot(liveChecklistByPhases),
         taskResults: taskResultsSnapshot,
         deviceNotes: deviceNotesSnapshot,
@@ -783,6 +851,12 @@ export default function App() {
       return next;
     });
 
+    setTestSessions(prev => {
+      const next = { ...prev };
+      delete next[communityId];
+      return next;
+    });
+
     setCommentBoxes({});
     setShowReport(false);
   };
@@ -821,6 +895,7 @@ export default function App() {
       deliveryException: currentDeliveryException,
       closedProject: currentClosedProject,
       deviceNotes: effectiveDeviceNotes,
+      testSessions: currentTestSessions,
     });
 
     const filename = `qa-labflow-${sanitizeFilename(selectedCommunity.name)}-${new Date().toISOString().slice(0, 10)}.json`;
@@ -852,6 +927,7 @@ export default function App() {
       deliveryException: currentDeliveryException,
       closedProject: currentClosedProject,
       deviceNotes: effectiveDeviceNotes,
+      testSessions: currentTestSessions,
     });
 
     const filename = `qa-labflow-${sanitizeFilename(selectedCommunity.name)}-archivado-${new Date().toISOString().slice(0, 10)}.json`;
@@ -891,15 +967,24 @@ export default function App() {
       return next;
     });
 
+    setTestSessions(prev => {
+      const next = { ...prev };
+      delete next[communityId];
+      return next;
+    });
+
     setCommentBoxes({});
     setShowReport(false);
   };
 
-  // Descarga un JSON por cada comunidad seleccionada, completo (mismo
+  // Arma UN .zip con un JSON por cada comunidad seleccionada, completo (mismo
   // formato que "Exportar JSON" / "Archivar proyecto" -- si está cerrada
   // usa la foto congelada, así que las pruebas con su estado quedan tal
-  // cual, no recalculadas). Cada archivo es importable por separado con
-  // "Importar JSON", no hace falta un formato nuevo.
+  // cual, no recalculadas). Dentro del zip cada archivo es importable por
+  // separado con "Importar JSON" (hay que descomprimir antes), no hace falta
+  // un formato nuevo. Se usa un zip en vez de N descargas sueltas para
+  // evitar los bloqueos de "descargas múltiples" del navegador y no tener
+  // que juntar los archivos a mano para mandarlos.
   const handleBulkExport = async communityIds => {
     const dataSources = {
       taskResults,
@@ -907,21 +992,32 @@ export default function App() {
       generalObservations,
       deliveryExceptions,
       closedProjects,
+      testSessions,
     };
 
-    for (const communityId of communityIds) {
+    const today = new Date().toISOString().slice(0, 10);
+    const encoder = new TextEncoder();
+    const files = {};
+
+    communityIds.forEach(communityId => {
       const community = normalizedCommunities.find(c => c.id === communityId);
-      if (!community) continue;
+      if (!community) return;
 
       const payload = buildCommunityExportPayload(community, dataSources);
-      const filename = `qa-labflow-${sanitizeFilename(community.name)}-${new Date().toISOString().slice(0, 10)}.json`;
-      downloadJson(filename, payload);
+      const baseName = `qa-labflow-${sanitizeFilename(community.name)}-${today}`;
 
-      // Pequeña pausa entre descargas: los navegadores pueden bloquear
-      // varias descargas simultáneas si se disparan todas de una.
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise(resolve => setTimeout(resolve, 350));
-    }
+      // Dos comunidades con el mismo nombre no deben pisarse dentro del zip.
+      let filename = `${baseName}.json`;
+      for (let copy = 2; files[filename]; copy += 1) filename = `${baseName}-${copy}.json`;
+
+      files[filename] = encoder.encode(JSON.stringify(payload, null, 2));
+    });
+
+    if (Object.keys(files).length === 0) return;
+
+    const { zipSync } = await import('fflate');
+    const zipped = zipSync(files);
+    downloadBlob(`qa-labflow-proyectos-${today}.zip`, new Blob([zipped], { type: 'application/zip' }));
   };
 
   const handleTriggerImport = () => {
@@ -943,12 +1039,14 @@ export default function App() {
         deliveryException: parsedDeliveryException,
         closedProject: parsedClosedProject,
         deviceNotes: parsedDeviceNotes,
+        testSessions: parsedTestSessions,
       } = parseImportedPayload(reader.result);
       const importedResults = importStripResults ? {} : parsedResults;
       const importedObservations = importStripResults ? [] : parsedObservations;
       const importedDeliveryException = importStripResults ? null : parsedDeliveryException;
       const importedClosedProject = importStripResults ? null : parsedClosedProject;
       const importedDeviceNotes = importStripResults ? {} : parsedDeviceNotes;
+      const importedTestSessions = importStripResults ? [] : parsedTestSessions;
       const importedCommunity = normalizeCommunity(community);
 
       // Conserva el id original; si choca con uno existente, genera uno nuevo
@@ -988,6 +1086,9 @@ export default function App() {
       }
       if (remappedClosedProject) {
         setClosedProjects(prev => ({ ...prev, [finalId]: remappedClosedProject }));
+      }
+      if (importedTestSessions.length > 0) {
+        setTestSessions(prev => ({ ...prev, [finalId]: importedTestSessions }));
       }
       setSelectedCommunityId(finalId);
       setView('dashboard');
@@ -1101,6 +1202,12 @@ export default function App() {
               onCloseProject={handleCloseProject}
               onReopenProject={handleReopenProject}
               onArchiveClosedProject={handleArchiveClosedProject}
+              testSessions={currentTestSessions}
+              onStartTestSession={handleStartTestSession}
+              onStopTestSession={handleStopTestSession}
+              onAddTestSession={handleAddTestSession}
+              onUpdateTestSession={handleUpdateTestSession}
+              onDeleteTestSession={handleDeleteTestSession}
             />
           )}
         </div>
@@ -1125,6 +1232,7 @@ export default function App() {
           deliveryException={currentDeliveryException}
           closedProject={currentClosedProject}
           deviceNotes={effectiveDeviceNotes}
+          testSessions={currentTestSessions}
           onClose={() => setShowReport(false)}
         />
       )}

@@ -9,6 +9,7 @@ import ChecklistFilters from './ChecklistFilters.jsx';
 import GeneralObservations from './GeneralObservations.jsx';
 import DeliveryDecision from './DeliveryDecision.jsx';
 import TechnicalSheetModal from './TechnicalSheetModal.jsx';
+import TestSessionsPanel from './TestSessionsPanel.jsx';
 
 function toggleFilterValue(values, value) {
   return values.includes(value) ? values.filter(item => item !== value) : [...values, value];
@@ -58,6 +59,12 @@ export default function Dashboard({
   onCloseProject,
   onReopenProject,
   onArchiveClosedProject,
+  testSessions,
+  onStartTestSession,
+  onStopTestSession,
+  onAddTestSession,
+  onUpdateTestSession,
+  onDeleteTestSession,
 }) {
   const [showTechnicalSheet, setShowTechnicalSheet] = useState(false);
   const [statusFilter, setStatusFilter] = useState([]);
@@ -229,6 +236,16 @@ export default function Dashboard({
           <SummaryPill label="N/A" value={summary.na} className="border-slate-200 bg-slate-100 text-slate-600" />
           <SummaryPill label="Pending" value={summary.pending} className="border-blue-200 bg-blue-50 text-blue-700" />
         </div>
+
+        <TestSessionsPanel
+          sessions={testSessions}
+          readOnly={isClosed}
+          onStart={onStartTestSession}
+          onStop={onStopTestSession}
+          onAdd={onAddTestSession}
+          onUpdate={onUpdateTestSession}
+          onDelete={onDeleteTestSession}
+        />
 
         <ApprovalPanel
           checklistByPhases={checklistByPhases}
